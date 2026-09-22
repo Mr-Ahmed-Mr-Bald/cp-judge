@@ -1,4 +1,3 @@
-# Needed modules
 import subprocess
 from pathlib import Path
 from typing import Tuple
@@ -10,7 +9,6 @@ class Compiler:
     TIMEOUT_SEC (float): Maximum allowed time in seconds for a compilation
     process to run before being forcefully terminated.
   """
-  # Time before compiling is terminated
   TIMEOUT_SEC: float = 10.0
 
   @staticmethod
@@ -59,4 +57,3 @@ class Compiler:
     # g++ not found
     except FileNotFoundError:
       return ("g++ compiler not found", False)
-    

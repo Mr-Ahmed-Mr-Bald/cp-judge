@@ -1,7 +1,8 @@
 #include<iostream>
 using namespace std;
 void solve() {
-  cout << "Good\n";
+  int x, y; cin >> x >> y;
+  cout << x + y << endl;
 }
 int main() {
   solve();

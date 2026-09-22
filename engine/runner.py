@@ -47,7 +47,7 @@ class Runner:
 
         # Get the contents of the standard output file
         stdout, _ = process.communicate(timeout=time_limit_ms/1000.0)
-
+        
         # Return result
         return (str(stdout.strip()), abs(process.returncode), False)
       
