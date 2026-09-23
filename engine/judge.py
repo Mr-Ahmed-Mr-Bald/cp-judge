@@ -129,6 +129,14 @@ def main():
           "test": test_idx
         })
         sys.exit(0)
+      
+      if (exit_code == 137):
+        emit_event({
+          "event": EventType.DONE,
+          "verdict": Verdict.ML,
+          "test": test_idx
+        })
+        sys.exit(0)
 
       if (exit_code != 0):
         emit_event({

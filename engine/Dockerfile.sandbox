@@ -1,0 +1,11 @@
+FROM ubuntu:24.04
+
+# Create an unprivileged user
+RUN useradd -m -s /bin/bash judgeuser
+
+WORKDIR /sandbox
+RUN chown judgeuser:judgeuser /sandbox
+
+USER judgeuser
+
+CMD ["/bin/sh"]
