@@ -24,9 +24,8 @@ class Compiler:
     
     # Command to run
     command = [
-      "g++",
-      "-O2",
-      "-std=c++17",
+      "g++", "-O2", "-std=c++17",
+      f"-I{Path("engine/include")}",
       str(source_path.resolve()),
       "-o",
       str(binary_path.resolve())

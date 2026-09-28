@@ -1,0 +1,1 @@
+You are given $t$ ($1 \le t \le 100$) test cases. In each test case, you are given an array $a$ of $n$ integers. Your job is to determine whether there are at least two elements that are the same.
