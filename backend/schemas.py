@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 
 class ProblemListItem(BaseModel):
+  model_config = ConfigDict(from_attributes=True)
 
   id: int
   slug: str
@@ -9,7 +10,7 @@ class ProblemListItem(BaseModel):
   memory_limit_mb: int
   tags: list[str]
 
-  @field_validator("tags", mode="wrap")
+  @field_validator("tags", mode="before")
   @classmethod
   def flatten_tags(cls, v):
     try:
