@@ -16,22 +16,9 @@ from database import (
   engine
 )
 
-
-ADMIN_EMAIL = "admin@judge.local"
 PROBLEMS_DIR = Path(
   os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
 ).resolve()
-
-def seed_admin(db: Session):
-  admin = db.query(User).filter(User.email == ADMIN_EMAIL).first()
-  if admin is not None:
-    return
-  db.add(User(
-    handle="admin",
-    email=ADMIN_EMAIL,
-    password_hash="admin", # will add hashing later
-    role=UserRole.ADMIN
-  ))
 
 def get_or_create_tag(db: Session, name: str) -> Tag:
   tag = db.query(Tag).filter(Tag.name == name).first()
@@ -83,7 +70,6 @@ def init_db():
   Base.metadata.create_all(bind=engine)
 
   try:
-    seed_admin(db)
     seed_problems(db)
     db.commit()
     print("Database initialization complete.")

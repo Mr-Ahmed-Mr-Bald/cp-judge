@@ -1,22 +1,196 @@
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+import jwt
 
 load_dotenv()
 
-from database import Problem, get_db # noqa: E402
-from schemas import ProblemDetail, ProblemListItem # noqa: E402
+from database import User, UserRole, Problem, get_db, SessionLocal
+from schemas import (
+    RegisterRequest, LoginRequest, ChangeHandleRequest, ChangePasswordRequest,
+    UserOut, TokenResponse, ProblemListItem, ProblemDetail,
+)
+from security import (
+    hash_password, verify_password, create_access_token, decode_access_token,
+)
 
 PROBLEMS_DIR = Path(
-  os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
+    os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
 ).resolve()
 
-app = FastAPI(description="Competitive Programming Judge API")
+# Admin seeding at startup
+def seed_admin() -> None:
+  admin_email = os.getenv("ADMIN_EMAIL")
+  admin_handle = os.getenv("ADMIN_HANDLE")
+  admin_password = os.getenv("ADMIN_PASSWORD")
 
+  if not all([admin_email, admin_handle, admin_password]):
+    raise RuntimeError("ADMIN_EMAIL, ADMIN_HANDLE, ADMIN_PASSWORD must all be set")
+
+  db = SessionLocal()
+  try:
+    existing = db.scalar(select(User).where(User.role == UserRole.ADMIN))
+    if existing is not None:
+      return
+    
+    db.add(User(
+      email=admin_email.lower(),
+      handle=admin_handle,
+      handle_lower=admin_handle.lower(),
+      password_hash=hash_password(admin_password),
+      role=UserRole.ADMIN
+    ))
+
+    try:
+      db.commit()
+    except IntegrityError:
+      db.rollback()
+  finally:
+    db.close()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+  seed_admin()
+  yield
+
+app = FastAPI(description="Competitive Programming Judge API", lifespan=lifespan)
+
+
+# Authentication dependency
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+
+def get_current_user(
+  token: str = Depends(oauth2_scheme),
+  db: Session = Depends(get_db)
+) -> User:
+
+  credentials_exception = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Invalid or expired token",
+    headers={"WWW-Authenticate": "Bearer"}
+  )
+  try:
+    payload = decode_access_token(token)
+    user_id = int(payload["sub"])
+  except (jwt.InvalidTokenError, KeyError, ValueError):
+    raise credentials_exception
+
+  user = db.get(User, user_id)
+  if user is None:
+    raise credentials_exception
+  
+  return user
+
+def require_not_admin(current_user: User = Depends(get_current_user)) -> User:
+  if current_user.role == UserRole.ADMIN:
+    raise HTTPException(
+      status_code=status.HTTP_403_FORBIDDEN,
+      detail="Admin account cannot be modified"
+    )
+  return current_user
+
+# Authentication endponits  
+@app.post("/api/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+  user = User(
+    email=req.email.lower(),
+    handle=req.handle,
+    handle_lower=req.handle.lower(),
+    password_hash=hash_password(req.password),
+    role=UserRole.USER
+  )
+
+  try:
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+  except IntegrityError as e:
+    db.rollback()
+
+    err = str(e.orig).lower()
+    if "email" in err:
+      detail = "Email already registered"
+    elif "handle" in err:
+      detail = "Handle already taken"
+    else:
+      detail="Duplicate value"
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+@app.post("/api/login", response_model=TokenResponse)
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+
+  invalid = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Invalid email or password"
+  )
+
+  user = db.scalar(select(User).where(User.email == req.email.lower()))
+
+  if user is None:
+    raise invalid
+
+  if not verify_password(user.password_hash, req.password):
+    raise invalid
+
+  token = create_access_token(user_id=user.id, role=user.role.name)
+  return TokenResponse(access_token=token)
+
+@app.get("/api/me", response_model=UserOut)
+def get_me(current_user: User = Depends(get_current_user)):
+  return current_user
+
+@app.patch("/api/me/handle", response_model=UserOut)
+def change_handle(
+  req: ChangeHandleRequest,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(require_not_admin)
+):
+
+  new_handle_lower = req.handle.lower()
+  current_user.handle = req.handle
+
+  if new_handle_lower != current_user.handle_lower:
+    current_user.handle_lower = new_handle_lower
+
+  try:
+    db.commit()
+  except IntegrityError:
+    db.rollback()
+    raise HTTPException(
+      status_code=status.HTTP_409_CONFLICT,
+      detail="Handle already taken"
+    ) from None
+  
+  db.refresh(current_user)
+  return current_user
+
+@app.patch("/api/me/password", response_model=UserOut)
+def change_password(
+  req: ChangePasswordRequest,
+  db: Session = Depends(get_db),
+  current_user: User = Depends(require_not_admin)
+):
+  if not verify_password(current_user.password_hash, req.current_password):
+    raise HTTPException(
+      status_code=status.HTTP_401_UNAUTHORIZED,
+      detail="Current password is not correct"
+    )
+
+  current_user.password_hash = hash_password(req.new_password)
+  db.commit()
+  db.refresh(current_user)
+  return current_user
+
+# Problems endpoints
 @app.get("/api/problems", response_model=list[ProblemListItem])
 def list_problems(db: Session = Depends(get_db)):
   problems = db.scalars(select(Problem)).all()

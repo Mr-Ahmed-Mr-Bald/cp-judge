@@ -22,7 +22,8 @@ class User(Base):
   __tablename__ = "users"
 
   id: Mapped[int] = mapped_column(primary_key=True)
-  handle: Mapped[str] = mapped_column(type_=String(255), unique=True, index=True)
+  handle: Mapped[str] = mapped_column(type_=String(255))
+  handle_lower: Mapped[str] = mapped_column(type_=String(255), unique=True, index=True)
   email: Mapped[str] = mapped_column(type_=String(255), unique=True)
   role: Mapped[UserRole] = mapped_column(type_=SaEnum(UserRole, name="user_role_enum"), default=UserRole.USER)
   password_hash: Mapped[str] = mapped_column(type_=String(255))
