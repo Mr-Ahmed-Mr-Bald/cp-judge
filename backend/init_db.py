@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+load_dotenv()
 
 from database import (
   Base,
@@ -15,19 +16,19 @@ from database import (
   engine
 )
 
-load_dotenv()
 
+ADMIN_EMAIL = "admin@judge.local"
 PROBLEMS_DIR = Path(
-  os.getenv("PROBLEMS_DIR", "../engine/problems")
+  os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
 ).resolve()
 
 def seed_admin(db: Session):
-  admin = db.query(User).filter(User.email == "admin@judge.local").first()
+  admin = db.query(User).filter(User.email == ADMIN_EMAIL).first()
   if admin is not None:
     return
   db.add(User(
     handle="admin",
-    email="admin@judge.local",
+    email=ADMIN_EMAIL,
     password_hash="admin", # will add hashing later
     role=UserRole.ADMIN
   ))
@@ -60,7 +61,7 @@ def seed_problems(db: Session):
     tests_dir = problem_folder / "tests"
     test_count = sum(
       1 for p in tests_dir.glob(r"*.in")
-    ) // 2
+    )
 
     tag_names = config.get("tags", [])
     tags = [get_or_create_tag(db, name) for name in tag_names]

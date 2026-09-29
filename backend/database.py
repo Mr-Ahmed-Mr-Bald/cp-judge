@@ -41,7 +41,9 @@ class Problem(Base):
 
   tags: Mapped[list["Tag"]] = relationship(
     secondary="problem_tags",
-    back_populates="problems"
+    back_populates="problems",
+    lazy="selectin",
+    passive_deletes=True
   )
 
 class Tag(Base):
@@ -52,7 +54,9 @@ class Tag(Base):
 
   problems: Mapped[list["Problem"]] = relationship(
     secondary="problem_tags",
-    back_populates="tags"
+    back_populates="tags",
+    lazy="selectin",
+    passive_deletes=True
   )
 
 class ProblemTag(Base):
