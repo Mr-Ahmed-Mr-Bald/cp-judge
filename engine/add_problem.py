@@ -6,7 +6,7 @@ import argparse
 
 from pathlib import Path
 from compiler import Compiler
-from runner import Runner
+from runner import Sandbox
 from checker import Checker
 
 def fail(msg: str):
@@ -41,7 +41,7 @@ def validate_config(file_path: Path) -> dict:
   if not isinstance(data["time_limit"], int) or not (100 <= data["time_limit"] <= 10000):
     fail("config.json: 'time_limit' must be an integer between 100 and 10000.")
 
-  if not isinstance(data["time_limit"], int) or not (32 <= data["time_limit"] <= 1024):
+  if not isinstance(data["memory_limit"], int) or not (32 <= data["memory_limit"] <= 1024):
     fail("config.json: 'memory_limit' must be an integer between 32 and 1024.")
 
   if not isinstance(data["tags"], list) or not all(isinstance(t, str) for t in data["tags"]):
@@ -117,25 +117,32 @@ def main():
 
   print("Main solution and checker compiled successfully")
 
-  # Generate answers according to main solution
+  # Generate answers according to main solution. One sandbox for every test,
+  # so a problem with a tight time limit is not failed by container startup.
   answer_files: list[Path] = []
-  for test_file in problem_tests:
-    answer_file = test_file.with_suffix(".ans")
-    stdout, exit_code, timed_out = Runner.run(
-      main_binary,
-      test_file,
-      problem_config["time_limit"],
-      problem_config["memory_limit"]
-    )
+  try:
+    sandbox = Sandbox(problem_config["memory_limit"], main_binary.parent)
+    sandbox.start()
+  except (RuntimeError, OSError) as error:
+    fail(f"Could not start sandbox: {error}")
 
-    if timed_out:
-      fail(f"Main solution timed out on test '{test_file.name}'.")
-    
-    if (exit_code != 0):
-      fail(f"Main solution produced wrong answer on test '{test_file.name}'")
+  with sandbox:
+    for test_file in problem_tests:
+      answer_file = test_file.with_suffix(".ans")
+      stdout, exit_code, timed_out = sandbox.run(
+        main_binary.name,
+        test_file,
+        problem_config["time_limit"]
+      )
 
-    answer_file.write_text(stdout, encoding="utf-8")
-    answer_files.append(answer_file)
+      if timed_out:
+        fail(f"Main solution timed out on test '{test_file.name}'.")
+      
+      if (exit_code != 0):
+        fail(f"Main solution produced wrong answer on test '{test_file.name}'")
+
+      answer_file.write_text(stdout, encoding="utf-8")
+      answer_files.append(answer_file)
 
   print("All tests executed")
 

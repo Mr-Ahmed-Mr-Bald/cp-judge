@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Tuple
 
 from compiler import Compiler
-from runner import Runner
+from runner import Sandbox
 from checker import Checker
 
 class EventType(str, Enum):
@@ -110,8 +110,7 @@ def main():
     tests_dir = problem_path / "tests"
     test_files = sorted(list(tests_dir.glob("*.in")))
     for test_idx, test_file in enumerate(test_files):
-      ans_file = test_file.with_suffix(".ans")
-      if (not ans_file.exists()):
+      if (not test_file.with_suffix(".ans").exists()):
         emit_event({
           "event": EventType.DONE,
           "verdict": Verdict.JE,
@@ -119,50 +118,66 @@ def main():
           "message": "Answer file does not exist"
         })
         sys.exit(1)
-      
-      emit_event({"event": EventType.RUNNING, "test": test_idx})
 
-      pstdout, exit_code, timed_out = Runner.run(
-        user_binary, test_file, problem_config["time_limit"], problem_config["memory_limit"]
-      )
+    # One sandbox for the whole submission: the container is created once and
+    # each test runs inside it, so container startup is not charged to the
+    # problem's time limit.
+    try:
+      sandbox = Sandbox(problem_config["memory_limit"], user_binary.parent)
+      sandbox.start()
+    except (RuntimeError, OSError) as error:
+      emit_event({
+        "event": EventType.DONE,
+        "verdict": Verdict.JE,
+        "message": str(error)
+      })
+      sys.exit(1)
 
-      if (timed_out):
-        emit_event({
-          "event": EventType.DONE, 
-          "verdict": Verdict.TL,
-          "test": test_idx
-        })
-        sys.exit(0)
-      
-      if (exit_code == 137):
-        emit_event({
-          "event": EventType.DONE,
-          "verdict": Verdict.ML,
-          "test": test_idx
-        })
-        sys.exit(0)
+    with sandbox:
+      for test_idx, test_file in enumerate(test_files):
+        emit_event({"event": EventType.RUNNING, "test": test_idx})
 
-      if (exit_code != 0):
-        emit_event({
-          "event": EventType.DONE, 
-          "verdict": Verdict.RE,
-          "test": test_idx
-        })
-        sys.exit(0)
+        pstdout, exit_code, timed_out = sandbox.run(
+          user_binary.name, test_file, problem_config["time_limit"]
+        )
 
-      # Save program stdout to temporary file for checker
-      out_file = work_dir / "out.out"
-      out_file.write_text(pstdout, encoding="utf-8")
+        if (timed_out):
+          emit_event({
+            "event": EventType.DONE, 
+            "verdict": Verdict.TL,
+            "test": test_idx
+          })
+          sys.exit(0)
+        
+        if (exit_code == 137):
+          emit_event({
+            "event": EventType.DONE,
+            "verdict": Verdict.ML,
+            "test": test_idx
+          })
+          sys.exit(0)
 
-      feedback, is_correct = Checker.check(checker_binary, test_file, out_file, ans_file)
-      if (not is_correct):
-        emit_event({
-          "event": EventType.DONE, 
-          "verdict": Verdict.WA,
-          "test": test_idx,
-          "message": feedback
-        })
-        sys.exit(0)
+        if (exit_code != 0):
+          emit_event({
+            "event": EventType.DONE, 
+            "verdict": Verdict.RE,
+            "test": test_idx
+          })
+          sys.exit(0)
+
+        # Save program stdout to temporary file for checker
+        out_file = work_dir / "out.out"
+        out_file.write_text(pstdout, encoding="utf-8")
+
+        feedback, is_correct = Checker.check(checker_binary, test_file, out_file, test_file.with_suffix(".ans"))
+        if (not is_correct):
+          emit_event({
+            "event": EventType.DONE, 
+            "verdict": Verdict.WA,
+            "test": test_idx,
+            "message": feedback
+          })
+          sys.exit(0)
 
     emit_event({"event": EventType.DONE, "verdict": Verdict.AC})
 

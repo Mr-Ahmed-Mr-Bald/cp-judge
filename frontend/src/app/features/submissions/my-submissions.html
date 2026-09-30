@@ -1,0 +1,98 @@
+<div class="page container">
+  <div class="page-head">
+    <div>
+      <h1>My submissions</h1>
+      <p class="subtitle">Newest first. Rows refresh on their own while a submission is judging.</p>
+    </div>
+    <a class="btn btn-sm" routerLink="/problems">Browse problems</a>
+  </div>
+
+  <div class="filters">
+    <label for="problem-filter" class="sr-only">Filter by problem</label>
+    <select
+      id="problem-filter"
+      [value]="problemSlug()"
+      (change)="onFilterChange($any($event.target).value)"
+    >
+      <option value="">All problems</option>
+      @for (problem of problems(); track problem.slug) {
+        <option [value]="problem.slug">{{ problem.title }}</option>
+      }
+    </select>
+    @if (problemSlug()) {
+      <button type="button" class="btn btn-sm btn-ghost" (click)="onFilterChange('')">
+        Clear filter
+      </button>
+    }
+  </div>
+
+  @if (error(); as message) {
+    <div class="alert alert-error" role="alert">{{ message }}</div>
+  }
+
+  <div class="card">
+    @if (submissions() === null && !error()) {
+      <div class="card-pad stack" aria-hidden="true">
+        @for (row of [1, 2, 3]; track row) {
+          <div class="skeleton" [style.width.%]="100 - row * 8"></div>
+        }
+      </div>
+    } @else if ((submissions() ?? []).length === 0) {
+      <div class="empty">
+        <p><strong>No submissions yet.</strong></p>
+        <p class="muted">
+          @if (problemSlug()) {
+            You have not submitted to {{ filterLabel() }} yet.
+          } @else {
+            Pick a problem, read the statement and send your first solution.
+          }
+        </p>
+        <a class="btn btn-sm btn-primary" routerLink="/problems">Browse problems</a>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Problem</th>
+              <th>Verdict</th>
+              <th>Submitted</th>
+              <th>Judging took</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (submission of submissions() ?? []; track submission.id) {
+              <tr>
+                <td class="id-cell">
+                  <a [routerLink]="['/submissions', submission.id]">#{{ submission.id }}</a>
+                </td>
+                <td>
+                  <a class="problem-link" [routerLink]="['/problems', submission.problem_slug]">
+                    {{ submission.problem_title }}
+                  </a>
+                </td>
+                <td>
+                  @if (submission.status === 'DONE') {
+                    <app-verdict-badge [verdict]="submission.verdict" />
+                    @if (submission.failed_test !== null) {
+                      <span class="faint test">test {{ submission.failed_test + 1 }}</span>
+                    }
+                  } @else {
+                    <span class="pending">{{ statusLabel(submission) }}</span>
+                  }
+                </td>
+                <td class="nowrap" [title]="absoluteTime(submission.created_at)">
+                  {{ relativeTime(submission.created_at) }}
+                </td>
+                <td class="nowrap">
+                  {{ submission.judged_at ? duration(submission.created_at, submission.judged_at) : '—' }}
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>

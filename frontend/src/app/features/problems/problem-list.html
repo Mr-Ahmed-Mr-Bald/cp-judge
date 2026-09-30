@@ -1,0 +1,101 @@
+<div class="page container">
+  <div class="page-head">
+    <div>
+      <h1>Problems</h1>
+      <p class="subtitle">
+        Read the statement, submit C++17, get a verdict. One submission is judged at a time.
+      </p>
+    </div>
+    <a class="btn btn-sm" routerLink="/submissions">My submissions</a>
+  </div>
+
+  @if (error(); as message) {
+    <div class="alert alert-error stack-sm">
+      <span>{{ message }}</span>
+      <button type="button" class="btn btn-sm" (click)="load()">Try again</button>
+    </div>
+  }
+
+  @if (problems() === null && !error()) {
+    <div class="card card-pad stack" aria-hidden="true">
+      @for (row of [1, 2, 3, 4]; track row) {
+        <div class="skeleton" [style.width.%]="100 - row * 6"></div>
+      }
+    </div>
+  } @else if (filtered(); as list) {
+    <div class="filters">
+      <input
+        type="text"
+        class="search"
+        placeholder="Filter by title, slug or tag…"
+        [value]="query()"
+        (input)="onQuery($any($event.target).value)"
+        aria-label="Filter problems"
+      />
+      @if (tags().length > 0) {
+        <div class="chips">
+          @for (tag of tags(); track tag) {
+            <button
+              type="button"
+              class="chip tag filter-tag"
+              [class.on]="activeTag() === tag"
+              (click)="toggleTag(tag)"
+            >
+              {{ tag }}
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      @if (list.length === 0) {
+        <div class="card-pad empty">
+          <p><strong>Nothing matches.</strong></p>
+          <p class="muted">Try a different search, or clear the filters.</p>
+          <button type="button" class="btn btn-sm" (click)="clearFilters()">Clear filters</button>
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Tags</th>
+                <th>Time limit</th>
+                <th>Memory limit</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (problem of list; track problem.slug) {
+                <tr>
+                  <td>
+                    <a class="title" [routerLink]="['/problems', problem.slug]">{{ problem.title }}</a>
+                    <span class="slug faint mono">{{ problem.slug }}</span>
+                  </td>
+                  <td>
+                    @if (problem.tags.length > 0) {
+                      <div class="chips">
+                        @for (tag of problem.tags; track tag) {
+                          <span class="chip tag">{{ tag }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="faint">—</span>
+                    }
+                  </td>
+                  <td class="nowrap">{{ formatMs(problem.time_limit_ms) }}</td>
+                  <td class="nowrap">{{ problem.memory_limit_mb }} MB</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <p class="faint count">
+      {{ list.length }} of {{ problems()?.length }} problem{{ (problems()?.length ?? 0) === 1 ? '' : 's' }}
+    </p>
+  }
+</div>

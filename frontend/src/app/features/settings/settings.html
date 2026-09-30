@@ -1,0 +1,136 @@
+<div class="page container">
+  <div class="page-head">
+    <div>
+      <h1>Settings</h1>
+      <p class="subtitle">Your handle is shown next to your submissions; your password protects your account.</p>
+    </div>
+  </div>
+
+  @if (isAdmin()) {
+    <div class="alert note" style="margin-bottom: 1.5rem">
+      <span>
+        <strong>This is the administrator account.</strong> It is created from the server
+        configuration and cannot be modified — both the handle and the password are rejected here.
+      </span>
+    </div>
+  }
+
+  <div class="grid">
+    <section class="card card-pad stack">
+      <div>
+        <h2>Account</h2>
+        <p class="muted">Read-only details for the signed-in account.</p>
+      </div>
+
+      <div class="account">
+        <span><span class="faint">Handle</span> · <strong>{{ auth.handle() }}</strong></span>
+        <span><span class="faint">Email</span> · {{ auth.user()?.email }}</span>
+        <span><span class="faint">Role</span> · {{ auth.user()?.role }}</span>
+      </div>
+
+      <h2>Change handle</h2>
+      <p class="muted">3–20 characters: letters, digits and underscore. Unique, case-insensitive.</p>
+
+      <form class="stack" (ngSubmit)="saveHandle()">
+        <div class="field">
+          <label for="handle">New handle</label>
+          <input
+            id="handle"
+            name="handle"
+            type="text"
+            autocomplete="nickname"
+            [(ngModel)]="handle"
+            [class.invalid]="!!handleFieldError()"
+            [disabled]="savingHandle() || isAdmin()"
+          />
+          @if (handleFieldError(); as text) {
+            <span class="error">{{ text }}</span>
+          }
+        </div>
+
+        @if (handleError(); as text) {
+          <div class="alert alert-error" role="alert">{{ text }}</div>
+        }
+        @if (handleDone()) {
+          <div class="alert alert-ok">Handle updated.</div>
+        }
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="savingHandle() || isAdmin() || !handle.trim()"
+        >
+          {{ savingHandle() ? 'Saving…' : 'Save handle' }}
+        </button>
+      </form>
+    </section>
+
+    <section class="card card-pad stack">
+      <div>
+        <h2>Change password</h2>
+        <p class="muted">At least 8 characters. Stored only as an Argon2 hash.</p>
+      </div>
+
+      <form class="stack" (ngSubmit)="savePassword()">
+        <div class="field">
+          <label for="current">Current password</label>
+          <input
+            id="current"
+            name="current"
+            type="password"
+            autocomplete="current-password"
+            [(ngModel)]="currentPassword"
+            [class.invalid]="!!currentPasswordError()"
+            [disabled]="savingPassword() || isAdmin()"
+          />
+          @if (currentPasswordError(); as text) {
+            <span class="error">{{ text }}</span>
+          }
+        </div>
+
+        <div class="field">
+          <label for="new">New password</label>
+          <input
+            id="new"
+            name="new"
+            type="password"
+            autocomplete="new-password"
+            [(ngModel)]="newPassword"
+            [class.invalid]="!!newPasswordError()"
+            [disabled]="savingPassword() || isAdmin()"
+          />
+          @if (newPasswordError(); as text) {
+            <span class="error">{{ text }}</span>
+          }
+        </div>
+
+        <div class="field">
+          <label for="confirm">Confirm new password</label>
+          <input
+            id="confirm"
+            name="confirm"
+            type="password"
+            autocomplete="new-password"
+            [(ngModel)]="confirmPassword"
+            [disabled]="savingPassword() || isAdmin()"
+          />
+        </div>
+
+        @if (passwordError(); as text) {
+          <div class="alert alert-error" role="alert">{{ text }}</div>
+        }
+        @if (passwordDone()) {
+          <div class="alert alert-ok">Password changed.</div>
+        }
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="savingPassword() || isAdmin() || !currentPassword || !newPassword"
+        >
+          {{ savingPassword() ? 'Saving…' : 'Save password' }}
+        </button>
+      </form>
+    </section>
+  </div>
+</div>

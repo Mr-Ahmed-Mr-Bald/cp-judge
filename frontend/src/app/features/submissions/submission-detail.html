@@ -1,0 +1,150 @@
+<div class="page container">
+  @if (notFound()) {
+    <div class="card card-pad stack">
+      <h1>Submission not found</h1>
+      <p class="muted">
+        This submission does not exist, or it belongs to another account. Submissions are visible
+        only to their owner.
+      </p>
+      <div class="row">
+        <a class="btn" routerLink="/submissions">My submissions</a>
+        <a class="btn btn-ghost" routerLink="/problems">Problems</a>
+      </div>
+    </div>
+  } @else if (error(); as message) {
+    <div class="card card-pad stack">
+      <h1>Could not load this submission</h1>
+      <p class="muted">{{ message }}</p>
+      <div class="row">
+        <button type="button" class="btn" (click)="refreshNow()">Try again</button>
+        <a class="btn btn-ghost" routerLink="/submissions">My submissions</a>
+      </div>
+    </div>
+  } @else if (submission(); as item) {
+    <div class="page-head">
+      <div class="head">
+        <h1>Submission #{{ item.id }}</h1>
+        <a class="btn btn-sm" [routerLink]="['/problems', item.problem_slug]">
+          {{ item.problem_title }}
+        </a>
+      </div>
+      <div class="row">
+        @if (!isDone()) {
+          <button type="button" class="btn btn-sm" (click)="toggleLive()">
+            {{ live() ? 'Pause updates' : 'Resume updates' }}
+          </button>
+        }
+        <a class="btn btn-sm" routerLink="/submissions">All submissions</a>
+      </div>
+    </div>
+
+    @if (isDone()) {
+      <div class="verdict-card" [style.borderColor]="'color-mix(in srgb, var(--' + verdictTone() + ') 45%, transparent)'">
+        <div>
+          <div class="big" [style.color]="'var(--' + verdictTone() + ')'">
+            {{ item.verdict }}
+          </div>
+        </div>
+        <div>
+          <div class="label">{{ verdict()?.label }}</div>
+          <div class="muted">{{ verdict()?.hint }}</div>
+        </div>
+        <span class="spacer"></span>
+        <div class="muted right">
+          @if (item.failed_test !== null) {
+            <div>Failed on test {{ item.failed_test + 1 }}</div>
+            @if (problem(); as problem) {
+              <div class="faint">of {{ problem.test_count }}</div>
+            }
+          } @else if (item.verdict === 'AC') {
+            <div>All {{ problem()?.test_count ?? '' }} tests passed</div>
+          } @else if (item.verdict === 'CE' || item.verdict === 'JE') {
+            <div>Never reached the tests</div>
+          }
+        </div>
+      </div>
+    } @else {
+      <div class="card card-pad stack">
+        <div class="row">
+          <strong>{{ statusText() }}</strong>
+          <span class="spacer"></span>
+          <span class="faint">updated {{ relativeTime(item.created_at) }}</span>
+        </div>
+        <div class="progress" [class.indeterminate]="progressPercent() === 0">
+          <div [style.width.%]="progressPercent()"></div>
+        </div>
+        <p class="faint progress-note">
+          @if (problem(); as problem) {
+            @if (item.status === 'RUNNING' && item.current_test !== null) {
+              Test {{ item.current_test + 1 }} of {{ problem.test_count }} · judging runs one
+              submission at a time, so the queue can take a moment.
+            } @else if (item.status === 'COMPILING') {
+              Building your program with g++ -O2 -std=c++17.
+            } @else {
+              Waiting for a worker to pick this submission up.
+            }
+          } @else {
+            The judge is working on this submission.
+          }
+        </p>
+      </div>
+    }
+
+    <div class="card card-pad facts-card">
+      <div class="facts">
+        <div class="fact">
+          <div class="k">Status</div>
+          <div class="v">
+            @if (isDone()) {
+              <app-verdict-badge [verdict]="item.verdict" />
+            } @else {
+              {{ statusText() }}
+            }
+          </div>
+        </div>
+        <div class="fact">
+          <div class="k">Submitted</div>
+          <div class="v" [title]="absoluteTime(item.created_at)">
+            {{ relativeTime(item.created_at) }}
+          </div>
+        </div>
+        @if (isDone() && item.judged_at) {
+          <div class="fact">
+            <div class="k">Judging took</div>
+            <div class="v">{{ duration(item.created_at, item.judged_at) }}</div>
+          </div>
+        }
+        <div class="fact">
+          <div class="k">Judge finished</div>
+          <div class="v" [title]="absoluteTime(item.judged_at)">
+            {{ item.judged_at ? absoluteTime(item.judged_at) : '—' }}
+          </div>
+        </div>
+        @if (problem(); as problem) {
+          <div class="fact">
+            <div class="k">Limits</div>
+            <div class="v">
+              {{ formatMs(problem.time_limit_ms) }} · {{ problem.memory_limit_mb }} MB
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="code-head">
+        <h2>Submitted source</h2>
+        <button type="button" class="btn btn-sm" (click)="copySource(item.source_code)">
+          Copy
+        </button>
+      </div>
+      <pre class="code-block"><code>{{ item.source_code }}</code></pre>
+    </div>
+  } @else {
+    <div class="card card-pad stack" aria-hidden="true">
+      <div class="skeleton" style="width: 35%"></div>
+      <div class="skeleton" style="width: 60%"></div>
+      <div class="skeleton" style="height: 8rem"></div>
+    </div>
+  }
+</div>

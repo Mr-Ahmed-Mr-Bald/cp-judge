@@ -1,0 +1,97 @@
+<div class="center-page">
+  <div class="narrow stack">
+    <div>
+      <h1>Create an account</h1>
+      <p class="muted">One account lets you submit solutions and track every verdict.</p>
+    </div>
+
+    <form class="card card-pad stack" (ngSubmit)="submit()">
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+          [(ngModel)]="email"
+          [class.invalid]="!!fieldError('email')"
+          [disabled]="submitting()"
+          required
+        />
+        @if (fieldError('email'); as text) {
+          <span class="error">{{ text }}</span>
+        }
+      </div>
+
+      <div class="field">
+        <label for="handle">Handle</label>
+        <input
+          id="handle"
+          name="handle"
+          type="text"
+          autocomplete="nickname"
+          placeholder="your_handle"
+          [(ngModel)]="handle"
+          [class.invalid]="!!fieldError('handle')"
+          [disabled]="submitting()"
+          required
+        />
+        @if (fieldError('handle'); as text) {
+          <span class="error">{{ text }}</span>
+        } @else {
+          <span class="hint">3–20 characters: A–Z, a–z, 0–9 and underscore. Unique, case-insensitive.</span>
+        }
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          placeholder="At least 8 characters"
+          [(ngModel)]="password"
+          [class.invalid]="!!fieldError('password')"
+          [disabled]="submitting()"
+          required
+        />
+        @if (fieldError('password'); as text) {
+          <span class="error">{{ text }}</span>
+        } @else {
+          <span class="hint">Stored only as an Argon2 hash.</span>
+        }
+      </div>
+
+      <div class="field">
+        <label for="confirm">Confirm password</label>
+        <input
+          id="confirm"
+          name="confirm"
+          type="password"
+          autocomplete="new-password"
+          [(ngModel)]="confirmPassword"
+          [class.invalid]="!!fieldError('confirmPassword')"
+          [disabled]="submitting()"
+          required
+        />
+        @if (fieldError('confirmPassword'); as text) {
+          <span class="error">{{ text }}</span>
+        }
+      </div>
+
+      @if (error(); as text) {
+        <div class="alert alert-error" role="alert">{{ text }}</div>
+      }
+
+      <button class="btn btn-primary btn-block" type="submit" [disabled]="submitting()">
+        {{ submitting() ? 'Creating account…' : 'Create account' }}
+      </button>
+
+      <p class="muted center">
+        Already registered? <a routerLink="/login">Log in</a>
+      </p>
+    </form>
+  </div>
+</div>

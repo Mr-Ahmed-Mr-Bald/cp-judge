@@ -266,7 +266,22 @@ def submit(
   db.add(submission)
   db.commit()
   db.refresh(submission)
-  return submission
+  return serialize_submission(submission)
+
+def serialize_submission(submission: Submission) -> dict:
+  return {
+    "id": submission.id,
+    "problem_id": submission.problem_id,
+    "problem_slug": submission.problem.slug,
+    "problem_title": submission.problem.title,
+    "status": submission.status,
+    "source_code": submission.source_code,
+    "created_at": submission.created_at,
+    "verdict": submission.verdict,
+    "current_test": submission.current_test,
+    "failed_test": submission.failed_test,
+    "judged_at": submission.judged_at,
+  }
 
 @app.get("/api/submissions/{sub_id}",
   response_model=SubmissionOut)
@@ -278,7 +293,7 @@ def get_submission(
   submission = db.get(Submission, sub_id)
   if submission is None or submission.user_id != current_user.id:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
-  return submission
+  return serialize_submission(submission)
 
 @app.get("/api/submissions", response_model=list[SubmissionListItem])
 def list_submissions(
@@ -287,22 +302,40 @@ def list_submissions(
   problem_slug: Optional[str] = None,
   limit: Optional[int] = 20
 ):
+  if problem_slug is not None:
+    problem_exists = db.scalar(
+      select(Problem.id).where(Problem.slug == problem_slug)
+    )
+    if problem_exists is None:
+      raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Problem '{problem_slug}' not found"
+      )
+
   stmt = (
-    select(Submission)
+    select(Submission, Problem.slug, Problem.title)
+    .join(Problem, Submission.problem_id == Problem.id)
     .where(Submission.user_id == current_user.id)
     .order_by(Submission.id.desc())
     .limit(limit)
   )
 
   if problem_slug is not None:
-    problem = db.scalar(select(Problem).where(Problem.slug == problem_slug))
-    if problem is None:
-      raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Problem '{problem_slug}' not found"
-      )
-    stmt = stmt.where(Submission.problem_id == problem.id)
-  
-  return db.scalars(stmt).all()
+    stmt = stmt.where(Problem.slug == problem_slug)
+
+  return [
+    SubmissionListItem(
+      id=submission.id,
+      problem_id=submission.problem_id,
+      problem_slug=slug,
+      problem_title=title,
+      status=submission.status,
+      created_at=submission.created_at,
+      verdict=submission.verdict,
+      failed_test=submission.failed_test,
+      judged_at=submission.judged_at,
+    )
+    for submission, slug, title in db.execute(stmt).all()
+  ]
 
   

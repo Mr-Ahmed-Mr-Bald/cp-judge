@@ -1,0 +1,56 @@
+<div class="center-page">
+  <div class="narrow stack">
+    <div>
+      <h1>Log in</h1>
+      <p class="muted">Welcome back. Your submissions are waiting.</p>
+    </div>
+
+    @if (notice(); as text) {
+      <div class="alert">{{ text }}</div>
+    }
+
+    <form class="card card-pad stack" (ngSubmit)="submit()">
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+          [(ngModel)]="email"
+          [class.invalid]="!!error()"
+          [disabled]="submitting()"
+          required
+        />
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Your password"
+          [(ngModel)]="password"
+          [class.invalid]="!!error()"
+          [disabled]="submitting()"
+          required
+        />
+      </div>
+
+      @if (error(); as text) {
+        <div class="alert alert-error" role="alert">{{ text }}</div>
+      }
+
+      <button class="btn btn-primary btn-block" type="submit" [disabled]="submitting()">
+        {{ submitting() ? 'Logging in…' : 'Log in' }}
+      </button>
+
+      <p class="muted center">
+        No account yet? <a routerLink="/register">Register</a>
+      </p>
+    </form>
+  </div>
+</div>

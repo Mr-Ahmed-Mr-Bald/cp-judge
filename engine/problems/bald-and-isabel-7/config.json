@@ -1,0 +1,11 @@
+{
+  "title": "Bald and Isabel",
+  "time_limit": 1000,
+  "memory_limit": 256,
+  "tags": [
+    "dp",
+    "graphs",
+    "rerooting",
+    "tree-diameter"
+  ]
+}

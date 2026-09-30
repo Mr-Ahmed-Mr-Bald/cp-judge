@@ -111,9 +111,13 @@ class SubmissionListItem(BaseModel):
 
   id: int
   problem_id: int
+  problem_slug: str
+  problem_title: str
   status: str
   created_at: datetime
   verdict: Optional[str] = None
+  failed_test: Optional[int] = None
+  judged_at: Optional[datetime] = None
 
   @field_validator("status", "verdict", mode="before")
   @classmethod
@@ -127,6 +131,8 @@ class SubmissionOut(BaseModel):
 
   id: int
   problem_id: int
+  problem_slug: str
+  problem_title: str
   status: str
   source_code: str
   created_at: datetime

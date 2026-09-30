@@ -1,0 +1,129 @@
+<div class="page container">
+  @if (notFound()) {
+    <div class="card card-pad stack">
+      <h1>No such problem</h1>
+      <p class="muted">{{ loadError() }}</p>
+      <div><a class="btn" routerLink="/problems">Back to problems</a></div>
+    </div>
+  } @else if (loadError()) {
+    <div class="card card-pad stack">
+      <h1>Could not load this problem</h1>
+      <p class="muted">{{ loadError() }}</p>
+      <div><a class="btn" routerLink="/problems">Back to problems</a></div>
+    </div>
+  } @else if (problem(); as item) {
+    <div class="page-head">
+      <div>
+        <h1>{{ item.title }}</h1>
+        <p class="subtitle mono">{{ item.slug }}</p>
+      </div>
+      <a class="btn btn-sm" routerLink="/problems">All problems</a>
+    </div>
+
+    <div class="layout">
+      <section class="card card-pad">
+        <div class="meta">
+          <span class="chip">Time limit <strong>{{ formatMs(item.time_limit_ms) }}</strong> per test</span>
+          <span class="chip">Memory <strong>{{ item.memory_limit_mb }} MB</strong></span>
+          <span class="chip">Tests <strong>{{ item.test_count }}</strong></span>
+          @for (tag of item.tags; track tag) {
+            <span class="chip tag">{{ tag }}</span>
+          }
+        </div>
+
+        <app-statement [markdownSource]="item.statement_md" />
+      </section>
+
+      <section class="card">
+        <div class="editor-head">
+          <h2>C++17 source</h2>
+          <div class="row">
+            <button type="button" class="btn btn-ghost btn-sm" (click)="resetToTemplate()">
+              Reset
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="clearDraft()">Clear</button>
+          </div>
+        </div>
+
+        <textarea
+          class="code"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          wrap="off"
+          aria-label="Solution source code"
+          [value]="sourceCode()"
+          (input)="onSourceChange($any($event.target).value)"
+          (keydown)="onTab($event, $any($event.target))"
+          [class.invalid]="overLimit()"
+        ></textarea>
+
+        <div class="editor-foot">
+          <span class="faint" [class.over]="overLimit()">
+            {{ (sourceBytes() / 1024).toFixed(1) }} KiB / {{ maxBytes / 1024 }} KiB
+          </span>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!canSubmit()"
+            (click)="submit()"
+          >
+            {{ submitting() ? 'Submitting…' : 'Submit' }}
+          </button>
+        </div>
+
+        <div class="card-pad stack">
+          @if (!auth.isLoggedIn()) {
+            <div class="alert">
+              <span>
+                <a routerLink="/login" [queryParams]="{ next: '/problems/' + item.slug }">Log in</a>
+                or <a routerLink="/register">register</a> to submit a solution.
+              </span>
+            </div>
+          }
+          @if (overLimit()) {
+            <div class="alert alert-error" role="alert">
+              The source is larger than the 64 KiB the judge accepts.
+            </div>
+          }
+          @if (submitError(); as message) {
+            <div class="alert alert-error" role="alert">{{ message }}</div>
+          }
+        </div>
+
+        @if (recent() !== null) {
+          <div class="card-pad recent">
+            <h2>Your recent submissions</h2>
+            @if ((recent() ?? []).length === 0) {
+              <p class="muted none">You have not submitted to this problem yet.</p>
+            } @else {
+              <div class="recent-list">
+                @for (item of recent() ?? []; track item.id) {
+                  <a class="recent-row" [routerLink]="['/submissions', item.id]">
+                    <span class="mono faint">#{{ item.id }}</span>
+                    <app-verdict-badge [verdict]="item.verdict" [compact]="true" />
+                    <span class="faint">{{ relativeTime(item.created_at) }}</span>
+                    <span class="spacer"></span>
+                    <span class="faint">open</span>
+                  </a>
+                }
+              </div>
+            }
+            <p class="faint all">
+              <a routerLink="/submissions" [queryParams]="{ problem: item.slug }">
+                See all your submissions for this problem →
+              </a>
+            </p>
+          </div>
+        }
+      </section>
+    </div>
+  } @else {
+    <div class="card card-pad stack" aria-hidden="true">
+      <div class="skeleton" style="width: 40%"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton" style="width: 85%"></div>
+      <div class="skeleton" style="width: 70%"></div>
+    </div>
+  }
+</div>
