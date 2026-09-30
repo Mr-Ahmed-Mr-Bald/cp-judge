@@ -8,8 +8,11 @@ class Compiler:
   Attributes:
     TIMEOUT_SEC (float): Maximum allowed time in seconds for a compilation
     process to run before being forcefully terminated.
+    INCLUDE_DIR (Path): Absolute path to the shared checker headers, anchored to
+    this module so it does not depend on the caller's working directory.
   """
   TIMEOUT_SEC: float = 10.0
+  INCLUDE_DIR: Path = Path(__file__).resolve().parent / "include"
 
   @staticmethod
   def compile(source_path: Path, binary_path: Path) -> Tuple[str, bool]:
@@ -25,7 +28,7 @@ class Compiler:
     # Command to run
     command = [
       "g++", "-O2", "-std=c++17",
-      f"-I{Path("engine/include")}",
+      f"-I{Compiler.INCLUDE_DIR}",
       str(source_path.resolve()),
       "-o",
       str(binary_path.resolve())

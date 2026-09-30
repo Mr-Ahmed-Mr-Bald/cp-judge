@@ -1,29 +1,30 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import jwt
 
 load_dotenv()
 
-from database import User, UserRole, Problem, get_db, SessionLocal
+from database import User, UserRole, Problem, get_db, SessionLocal, Submission, SubmissionStatus, SubmissionVerdict
 from schemas import (
     RegisterRequest, LoginRequest, ChangeHandleRequest, ChangePasswordRequest,
-    UserOut, TokenResponse, ProblemListItem, ProblemDetail,
+    UserOut, TokenResponse, ProblemListItem, ProblemDetail, SubmissionRequest,
+    SubmissionListItem, SubmissionOut
 )
 from security import (
     hash_password, verify_password, create_access_token, decode_access_token,
 )
+from paths import problems_dir
 
-PROBLEMS_DIR = Path(
-    os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
-).resolve()
+PROBLEMS_DIR = problems_dir()
 
 # Admin seeding at startup
 def seed_admin() -> None:
@@ -64,7 +65,6 @@ app = FastAPI(description="Competitive Programming Judge API", lifespan=lifespan
 
 
 # Authentication dependency
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
 
 def get_current_user(
@@ -224,3 +224,85 @@ def get_problem(slug: str, db: Session = Depends(get_db)):
     "tags": problem.tags,
     "statement_md": statement_path.read_text(encoding="utf-8")
   }
+
+SOURCE_MAX_BYTES = 64 * 1024
+MAX_PENDING_PER_USER = 5
+
+@app.post("/api/problems/{slug}/submissions",
+  response_model=SubmissionOut,
+  status_code=status.HTTP_201_CREATED)
+def submit(
+  slug: str,
+  req: SubmissionRequest, 
+  db: Session = Depends(get_db), 
+  current_user: User = Depends(get_current_user)
+):
+  problem = db.scalar(select(Problem).where(Problem.slug == slug))
+  if problem is None:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail=f"Problem '{slug}' not found"
+    )
+
+  pending_count = db.scalar(
+    select(func.count(Submission.id)).where(
+      Submission.user_id == current_user.id,
+      Submission.status == SubmissionStatus.PENDING
+    )
+  )
+
+  if pending_count >= MAX_PENDING_PER_USER:
+    raise HTTPException(
+      status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+      detail="Too many pending submissions"
+    )
+
+  submission = Submission(
+    user_id=current_user.id,
+    problem_id=problem.id,
+    source_code=req.source_code
+  )
+
+  db.add(submission)
+  db.commit()
+  db.refresh(submission)
+  return submission
+
+@app.get("/api/submissions/{sub_id}",
+  response_model=SubmissionOut)
+def get_submission(
+  sub_id: int, 
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user)
+):
+  submission = db.get(Submission, sub_id)
+  if submission is None or submission.user_id != current_user.id:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+  return submission
+
+@app.get("/api/submissions", response_model=list[SubmissionListItem])
+def list_submissions(
+  db: Session = Depends(get_db),
+  current_user: User = Depends(get_current_user),
+  problem_slug: Optional[str] = None,
+  limit: Optional[int] = 20
+):
+  stmt = (
+    select(Submission)
+    .where(Submission.user_id == current_user.id)
+    .order_by(Submission.id.desc())
+    .limit(limit)
+  )
+
+  if problem_slug is not None:
+    problem = db.scalar(select(Problem).where(Problem.slug == problem_slug))
+    if problem is None:
+      raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Problem '{problem_slug}' not found"
+      )
+    stmt = stmt.where(Submission.problem_id == problem.id)
+  
+  return db.scalars(stmt).all()
+
+  

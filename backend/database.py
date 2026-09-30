@@ -1,8 +1,9 @@
 import os
+from typing import Optional, Text
 from enum import Enum as PyEnum, auto
 from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import String, DateTime, ForeignKey, func, Enum as SaEnum, create_engine
+from sqlalchemy import String, DateTime, ForeignKey, func, Enum as SaEnum, create_engine, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, relationship
 
 load_dotenv()
@@ -72,3 +73,46 @@ def get_db():
     yield db
   finally:
     db.close()
+
+class SubmissionStatus(str, PyEnum):
+  PENDING = "PENDING"
+  COMPILING = "COMPILING"
+  RUNNING = "RUNNING"
+  DONE = "DONE"
+
+class SubmissionVerdict(str, PyEnum):
+  AC = "AC"
+  WA = "WA"
+  TL = "TL"
+  ML = "ML"
+  RE = "RE"
+  CE = "CE"
+  JE = "JE"
+
+class Submission(Base):
+  __tablename__ = "submissions"
+
+  id: Mapped[int] = mapped_column(primary_key=True)
+  user_id: Mapped[int] = mapped_column(ForeignKey(column="users.id", ondelete="CASCADE"))
+  problem_id: Mapped[int] = mapped_column(ForeignKey(column="problems.id", ondelete="CASCADE"))
+  source_code: Mapped[str]
+
+  status: Mapped[SubmissionStatus] = mapped_column(
+    type_=SaEnum(SubmissionStatus, name="submission_status_enum"),
+    default=SubmissionStatus.PENDING,
+    index=True
+  )
+  verdict: Mapped[Optional[SubmissionVerdict]] = mapped_column(
+    type_=SaEnum(SubmissionVerdict, name="submission_verdict_enum"),
+    nullable=True
+  )
+
+  failed_test: Mapped[Optional[int]] = mapped_column(nullable=True)
+  current_test: Mapped[Optional[int]] = mapped_column(nullable=True)
+  created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+  judged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+  user: Mapped["User"] = relationship("User", lazy="select")
+  problem: Mapped["Problem"] = relationship("Problem", lazy="select")
+
+Index("ix_submissions_status_id", Submission.status, Submission.id)

@@ -1,7 +1,7 @@
 import re
 from enum import Enum
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from pydantic import (
     AfterValidator,
@@ -93,3 +93,51 @@ class UserOut(BaseModel):
 class TokenResponse(BaseModel):
   access_token: str
   token_type: str = "bearer"
+
+
+SOURCE_MAX_BYTES = 64 * 1024
+class SubmissionRequest(BaseModel):
+  source_code: str
+
+  @field_validator("source_code")
+  @classmethod
+  def check_size(cls, v: str) -> str:
+    if (len(v.encode("utf-8")) > SOURCE_MAX_BYTES):
+      raise ValueError("source code exceeds 64 KiB")
+    return v
+
+class SubmissionListItem(BaseModel):
+  model_config = ConfigDict(from_attributes=True)
+
+  id: int
+  problem_id: int
+  status: str
+  created_at: datetime
+  verdict: Optional[str] = None
+
+  @field_validator("status", "verdict", mode="before")
+  @classmethod
+  def enum_to_str(cls, v):
+    if hasattr(v, "value"):
+      return v.value
+    return v
+
+class SubmissionOut(BaseModel):
+  model_config = ConfigDict(from_attributes=True)
+
+  id: int
+  problem_id: int
+  status: str
+  source_code: str
+  created_at: datetime
+  verdict: Optional[str] = None
+  current_test: Optional[int] = None
+  failed_test: Optional[int] = None
+  judged_at: Optional[datetime] = None
+
+  @field_validator("status", "verdict", mode="before")
+  @classmethod
+  def enum_to_str(cls, v):
+    if hasattr(v, "value"):
+      return v.value
+    return v

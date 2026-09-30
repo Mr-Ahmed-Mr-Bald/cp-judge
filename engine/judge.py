@@ -11,6 +11,7 @@ from runner import Runner
 from checker import Checker
 
 class EventType(str, Enum):
+  COMPILING= "compiling"
   RUNNING = "running"
   DONE = "done"
 
@@ -78,6 +79,10 @@ def main():
   with open(config_path, "r", encoding="utf-8") as f:
     problem_config = json.load(f)
 
+  emit_event({
+    "event": EventType.COMPILING
+  })
+  
   with tempfile.TemporaryDirectory() as tmp_dir:
     work_dir = Path(tmp_dir)
     user_binary = work_dir / "user_binary"

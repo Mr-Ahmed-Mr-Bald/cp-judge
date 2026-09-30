@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/bald/cp-judge/backend/worker.py", line 12, in <module>
+    from sqlalchemy import select
+ModuleNotFoundError: No module named 'sqlalchemy'

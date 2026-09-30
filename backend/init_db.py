@@ -16,9 +16,9 @@ from database import (
   engine
 )
 
-PROBLEMS_DIR = Path(
-  os.getenv("PROBLEMS_DIR", Path(__file__).parent.parent / "engine" / "problems")
-).resolve()
+from paths import problems_dir
+
+PROBLEMS_DIR = problems_dir()
 
 def get_or_create_tag(db: Session, name: str) -> Tag:
   tag = db.query(Tag).filter(Tag.name == name).first()

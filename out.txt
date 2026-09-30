@@ -1,0 +1,2 @@
+{"event": "compiling"}
+{"event": "done", "verdict": "CE", "message": "/usr/bin/ld:/home/bald/cp-judge/backend/tests/engines/fake_ok.py: file format not recognized; treating as linker script\n/usr/bin/ld:/home/bald/cp-judge/backend/tests/engines/fake_ok.py:1: syntax error\ncollect2: error: ld returned 1 exit status"}
