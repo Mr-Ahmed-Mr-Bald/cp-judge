@@ -305,6 +305,26 @@ The usual cause is the sandbox's 8 MB default stack being smaller than what a
 deeply recursive solution needs, which `docker run --ulimit stack=...` would
 have to accommodate.
 
+### Keeping the repository small
+
+Test data dominates this repository — around 420 MB, almost all of it `.in`
+files. Two things are worth knowing before adding a problem with large tests:
+
+- **Compressing the test files does not help.** Git already deflates blobs, and
+  a 36 MB test lands in the object store at 19 MB, which is what `gzip -9`
+  would have produced anyway. Hand-compressing the files adds a decompression
+  step to the engine and saves nothing.
+- **The `.ans` files are redundant.** They are exactly what `main.cpp` prints
+  on each input, so `add_problem.py` regenerates them on every import. They are
+  committed because `judge.py` requires them to exist, not because they carry
+  information the inputs and the reference solution do not.
+
+So the lever is how much test data a problem carries, not how it is encoded. A
+problem whose generator emits a million cases per file produces test data out of
+all proportion to its difficulty, and once its Polygon export is gone that data
+cannot be rebuilt. Prefer capping the generator's case count.
+
+
 ---
 
 ## API
