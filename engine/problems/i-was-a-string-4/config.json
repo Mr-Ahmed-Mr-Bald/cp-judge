@@ -1,0 +1,11 @@
+{
+  "title": "I Was a String",
+  "time_limit": 2000,
+  "memory_limit": 256,
+  "tags": [
+    "div2-c",
+    "greedy",
+    "implementation",
+    "simulation"
+  ]
+}

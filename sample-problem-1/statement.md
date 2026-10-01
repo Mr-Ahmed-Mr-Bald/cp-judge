@@ -1,1 +1,0 @@
-Given two integers $x$ and $y$ ($0 \le x, y \le 10^{12}$), print their sum.

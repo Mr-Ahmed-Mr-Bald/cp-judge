@@ -42,6 +42,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ENGINE_DIR = Path(__file__).resolve().parent
+
+# C++ source spellings seen in Polygon exports.
+CPP_SUFFIXES = {".cpp", ".cc", ".cxx", ".c++"}
 REPO_ROOT = ENGINE_DIR.parent
 
 # Section macros used by the LaTeX templates that have no Markdown equivalent.
@@ -265,8 +268,16 @@ class GeneratorCache:
         self.binaries: dict[str, Path] = {}
         self.workdir = workdir
 
+    # Generators are named freely in Polygon ("gen_random", "Gen", "grader", ...),
+    # so every source in files/ is a candidate. The checker and validator are not
+    # generators and are handled elsewhere.
+    NON_GENERATOR = re.compile(r"^(check|checker|validator|validate|jchecker)\b", re.I)
+
     def compile_all(self) -> None:
-        sources = sorted((self.package / "files").glob("gen*.cpp"))
+        sources = sorted(
+            source for source in (self.package / "files").glob("*.cpp")
+            if not self.NON_GENERATOR.match(source.stem)
+        )
         if not sources:
             return
 
@@ -283,14 +294,20 @@ class GeneratorCache:
             if result.returncode != 0:
                 print(f"  ! could not build {source.name}: skipping it")
                 continue
-            self.binaries[source.stem] = binary
+            self.binaries[source.stem.lower()] = binary
 
     def run(self, command: str) -> str | None:
         parts = command.split()
-        if not parts or parts[0] not in self.binaries:
+        if not parts:
             return None
+        # Polygon records the command with the generator's own spelling, which
+        # need not match the file name's case.
+        binary = self.binaries.get(Path(parts[0]).name.lower())
+        if binary is None:
+            return None
+
         result = subprocess.run(
-            [str(self.binaries[parts[0]]), *parts[1:]],
+            [str(binary), *parts[1:]],
             capture_output=True,
             text=True,
             timeout=120,
@@ -435,13 +452,35 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
         json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    solution = (
-        find_asset(package, root, "./assets/solutions/solution[@tag='accepted']")
-        or find_asset(package, root, "./assets/solutions/solution")
-    )
-    if solution is None:
-        fail("no solution source in the export; tag one 'accepted' on Polygon.")
-    shutil.copyfile(solution, destination / "main.cpp")
+    # The engine only judges C++, and an export usually carries solutions in
+    # several languages at once, with the 'accepted' tag on whichever language
+    # the setter submitted. Picking the first solution node regardless of
+    # language copies a .py or .java into main.cpp and only fails later, at
+    # compile time, so choose on the declared type and fall back to a C++ one.
+    candidates: list[tuple[bool, str, Path]] = []
+    for node in root.iter("solution"):
+        tag = (node.get("tag") or "").lower()
+        for source in node.iter("source"):
+            relative = source.get("path")
+            if not relative:
+                continue
+            path = package / relative
+            if not path.is_file():
+                continue
+            declared = (source.get("type") or "").lower()
+            is_cpp = declared.startswith("cpp") or path.suffix.lower() in CPP_SUFFIXES
+            if is_cpp:
+                candidates.append((tag == "accepted", tag or "main", path))
+
+    if not candidates:
+        fail(
+            "no C++ solution source in the export. Tag a C++ solution "
+            "'accepted' on Polygon (the engine judges C++ only)."
+        )
+
+    candidates.sort(key=lambda item: (not item[0], item[1]))
+    chosen_solution = candidates[0][2]
+    shutil.copyfile(chosen_solution, destination / "main.cpp")
 
     checker = (
         find_asset(package, root, "./assets/checker/source")
@@ -466,7 +505,7 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
     print(f"  limits      {metadata['time_limit']} ms, {metadata['memory_limit_mb']} MB")
     print(f"  tags        {', '.join(metadata['tags']) or '(none)'}")
     print(f"  tests       {len(list((destination / 'tests').glob('*.in')))}")
-    print(f"  solution    {solution.relative_to(package)}")
+    print(f"  solution    {chosen_solution.relative_to(package)}")
     print(f"  checker     {checker.relative_to(package)}")
     for warning in warnings:
         print(f"  ! {warning}")

@@ -1,0 +1,11 @@
+{
+  "title": "Remove and Concatenate",
+  "time_limit": 3000,
+  "memory_limit": 256,
+  "tags": [
+    "data structures",
+    "div2-d",
+    "greedy",
+    "implementation"
+  ]
+}
