@@ -245,6 +245,40 @@ row the first one is holding instead of blocking on it, so no submission is ever
 judged twice. On startup the worker also resets rows left in `RUNNING` by a
 process that died, so a killed worker does not strand a submission.
 
+### Capacity and backlog
+
+**This setup serves roughly 15-30 submissions per minute, and does not degrade
+gracefully past that point.** One worker judges one submission to completion
+before claiming the next, and a single submission costs 2-4 seconds end to end:
+0.4-0.7s to create the sandbox container, ~0.45s to calibrate the per-exec
+overhead, 0.5-2s to compile the submission, 0.3-1s to compile the checker, and
+~0.15s plus runtime per test. Throughput is therefore roughly `1 / 3s`, and it
+is the worker loop, not the API or the database, that is the bottleneck.
+
+Two consequences worth knowing before putting this in front of anyone:
+
+- **The backlog is unbounded.** The API caps pending submissions at five *per
+  user*, which stops a single account from flooding the queue but says nothing
+  about total load: 100 users can still enqueue 500 submissions. If arrivals
+  exceed the service rate, wait time grows without limit rather than settling at
+  some higher plateau.
+- **Ordering is strictly FIFO by id.** Because the worker claims the oldest
+  submission first and the claim is per-user-limited, one account submitting
+  five times can force every other user to wait behind all five.
+
+Scaling fixes, in rough order of payoff, are: run one worker per core (the
+`SKIP LOCKED` claim is already safe for this); compile the checker into the
+sandbox image or cache it per problem, since it is identical for every
+submission to that problem; pool sandbox containers across submissions instead
+of creating and removing one per submission; replace the 0.5s poll loop with
+Postgres `LISTEN`/`NOTIFY`; and add a global pending cap so the API sheds load
+with a `429` rather than accepting work that will take an hour. Splitting the
+judge onto autoscaled hosts that scale on queue depth is the step beyond that.
+
+Note that the single-worker design is a throughput choice, not a correctness
+one. Timings stay stable with several workers only when they share a CPU; one
+worker pinned per core is both faster and no less accurate.
+
 ---
 
 ## Adding a problem
@@ -378,6 +412,8 @@ second problem with a different checker.
 ## Notes and limitations
 
 - One submission is judged at a time, by design, so that timings are stable.
+  This caps throughput at roughly 15-30 submissions per minute and the queue
+  backlog is unbounded past that; see *Capacity and backlog*.
 - The worker reaches Docker through the host's socket, so it runs on the host
   rather than inside a container.
 - C++17 only. No interactive problems, no partial scoring, no contests.

@@ -227,6 +227,7 @@ def get_problem(slug: str, db: Session = Depends(get_db)):
 
 SOURCE_MAX_BYTES = 64 * 1024
 MAX_PENDING_PER_USER = 5
+MAX_PENDING_GLOBAL = 100
 
 @app.post("/api/problems/{slug}/submissions",
   response_model=SubmissionOut,
@@ -244,14 +245,25 @@ def submit(
       detail=f"Problem '{slug}' not found"
     )
 
-  pending_count = db.execute(
+  pending_count_global = db.execute(
+    select(func.count(Submission.id))
+    .where(Submission.status == SubmissionStatus.PENDING)
+  ).scalar_one()
+
+  if pending_count_global >= MAX_PENDING_GLOBAL:
+    raise HTTPException(
+      status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+      detail="Server is busy. Try again later"
+    )
+
+  pending_count_for_user = db.execute(
     select(func.count(Submission.id)).where(
       Submission.user_id == current_user.id,
       Submission.status == SubmissionStatus.PENDING
     )
   ).scalar_one()
 
-  if pending_count >= MAX_PENDING_PER_USER:
+  if pending_count_for_user >= MAX_PENDING_PER_USER:
     raise HTTPException(
       status_code=status.HTTP_429_TOO_MANY_REQUESTS,
       detail="Too many pending submissions"
