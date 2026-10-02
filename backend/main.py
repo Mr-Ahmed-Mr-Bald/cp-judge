@@ -42,10 +42,10 @@ def seed_admin() -> None:
       return
     
     db.add(User(
-      email=admin_email.lower(),
+      email=admin_email.lower(), # type: ignore
       handle=admin_handle,
-      handle_lower=admin_handle.lower(),
-      password_hash=hash_password(admin_password),
+      handle_lower=admin_handle.lower(), # type: ignore
+      password_hash=hash_password(admin_password), # type: ignore
       role=UserRole.ADMIN
     ))
 
@@ -244,12 +244,12 @@ def submit(
       detail=f"Problem '{slug}' not found"
     )
 
-  pending_count = db.scalar(
+  pending_count = db.execute(
     select(func.count(Submission.id)).where(
       Submission.user_id == current_user.id,
       Submission.status == SubmissionStatus.PENDING
     )
-  )
+  ).scalar_one()
 
   if pending_count >= MAX_PENDING_PER_USER:
     raise HTTPException(
