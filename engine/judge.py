@@ -58,6 +58,7 @@ def main():
   problem_path: Path = args.problem.resolve()
   source_path: Path = args.source.resolve()
 
+  # Validate problem package
   ok, error_message = validate_problem_package(problem_path)
   if (not ok):
     emit_event({
@@ -67,6 +68,7 @@ def main():
     })
     sys.exit(1)
 
+  # Ensure source file exists
   if (not source_path.exists() or not source_path.is_file()):
     emit_event({
       "event": EventType.DONE,
@@ -75,19 +77,23 @@ def main():
     })
     sys.exit(1)
 
+  # Get configuration
   config_path = problem_path / "config.json"
   with open(config_path, "r", encoding="utf-8") as f:
     problem_config = json.load(f)
 
-  emit_event({
-    "event": EventType.COMPILING
-  })
-  
+  # Start compiling
+
+  # Create a temporary folder as a judging environment
   with tempfile.TemporaryDirectory() as tmp_dir:
     work_dir = Path(tmp_dir)
     user_binary = work_dir / "user_binary"
     checker_binary = work_dir / "checker_binary"
+    emit_event({
+      "event": EventType.COMPILING
+    })
 
+    # Compiling source code
     error_message, success = Compiler.compile(source_path, user_binary)
     if (not success):
       emit_event({
@@ -97,23 +103,25 @@ def main():
       })
       sys.exit(0)
 
+    # Compiling checker
     checker_source = problem_path / "checker.cpp"
     error_message, success = Compiler.compile(checker_source, checker_binary)
     if (not success):
       emit_event({
         "event": EventType.DONE,
-        "verdict": Verdict.JE,
+        "verdict": Verdict.JE, # Judge's fault, not user's
         "message": error_message
       })
       sys.exit(1)
 
+    # Validate test files
     tests_dir = problem_path / "tests"
     test_files = sorted(list(tests_dir.glob("*.in")))
     for test_idx, test_file in enumerate(test_files):
       if (not test_file.with_suffix(".ans").exists()):
         emit_event({
           "event": EventType.DONE,
-          "verdict": Verdict.JE,
+          "verdict": Verdict.JE, # Judge's fault
           "test": test_idx,
           "message": "Answer file does not exist"
         })
@@ -141,6 +149,7 @@ def main():
           user_binary.name, test_file, problem_config["time_limit"]
         )
 
+        # Timeout
         if (timed_out):
           emit_event({
             "event": EventType.DONE, 
@@ -148,7 +157,8 @@ def main():
             "test": test_idx
           })
           sys.exit(0)
-        
+
+        # Memory limit
         if (exit_code == 137):
           emit_event({
             "event": EventType.DONE,
@@ -157,6 +167,7 @@ def main():
           })
           sys.exit(0)
 
+        # Runtime error
         if (exit_code != 0):
           emit_event({
             "event": EventType.DONE, 

@@ -99,7 +99,7 @@ class Submission(Base):
 
   status: Mapped[SubmissionStatus] = mapped_column(
     type_=SaEnum(SubmissionStatus, name="submission_status_enum"),
-    default=SubmissionStatus.PENDING,
+    server_default=SubmissionStatus.PENDING,
     index=True
   )
   verdict: Mapped[Optional[SubmissionVerdict]] = mapped_column(
