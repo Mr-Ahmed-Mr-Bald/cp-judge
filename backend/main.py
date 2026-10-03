@@ -272,7 +272,8 @@ def submit(
   submission = Submission(
     user_id=current_user.id,
     problem_id=problem.id,
-    source_code=req.source_code
+    source_code=req.source_code,
+    status=SubmissionStatus.PENDING
   )
 
   # The row and the wakeup are committed together on purpose. pg_notify is

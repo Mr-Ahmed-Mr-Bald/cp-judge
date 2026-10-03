@@ -2,7 +2,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 class Sandbox:
   """Runs a candidate binary inside the sandbox, one container per submission.

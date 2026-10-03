@@ -39,6 +39,7 @@ if not JUDGE_PATH.is_file():
     f"Engine entrypoint not found: {JUDGE_PATH} "
     f"(JUDGE_PATH={os.environ['JUDGE_PATH']!r} resolved from {REPO_ROOT})"
   )
+
 if not PROBLEMS_DIR.is_dir():
   raise RuntimeError(
     f"Problems directory not found: {PROBLEMS_DIR} "
