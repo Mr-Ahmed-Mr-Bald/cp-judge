@@ -145,7 +145,18 @@ cd backend && .venv/bin/python worker.py
 ```
 
 The worker needs the Docker CLI and access to the daemon, so run it on the host
-rather than in a container.
+rather than in a container. It also needs **psycopg2** specifically: it opens its
+own connection to `LISTEN` on, outside SQLAlchemy, because the raw driver APIs
+that requires belong to psycopg2 and not to psycopg3.
+
+**Multiple workers are supported as-is.** Run as many `worker.py` processes as
+you want, in separate terminals or under a supervisor; no configuration change
+and no code change is needed. The queue is claimed with `FOR UPDATE SKIP
+LOCKED`, so concurrent workers never claim the same submission and never block
+on each other, and each one recovers stale `RUNNING`/`COMPILING` rows on its own
+startup. The only thing to watch is CPU contention: workers share the host, so
+give each one its own core if you care about time-limit accuracy, since the
+sandbox timing is wall-clock.
 
 ### 4. Frontend
 
@@ -245,39 +256,70 @@ row the first one is holding instead of blocking on it, so no submission is ever
 judged twice. On startup the worker also resets rows left in `RUNNING` by a
 process that died, so a killed worker does not strand a submission.
 
+#### Waking the worker
+
+The worker does not poll for work. Submitting wakes it: the API issues
+`pg_notify` in the *same transaction* as the `INSERT`. `NOTIFY` is delivered at
+`COMMIT`, so the pair is atomic — committing the row first and notifying in a
+second transaction would leave a window in which a crash strands a committed
+submission that no worker is ever woken for.
+
+The worker holds one dedicated connection in autocommit with
+`LISTEN new_submission`, blocks in `select()` on that socket, and on wake-up
+re-queries the table rather than trusting the notification's payload. `NOTIFY`
+is not durable, so the payload is only a doorbell and the table stays the source
+of truth. Three details that are easy to get wrong:
+
+- The listener connection must be in **autocommit**. Otherwise notifications sit
+  invisible inside the open transaction and never arrive.
+- It connects with **psycopg2 directly**, not through SQLAlchemy, because the
+  raw driver APIs it needs — `set_isolation_level`, `poll`, `fileno` — are
+  psycopg2's. SQLAlchemy 2.1 resolves a bare `postgresql://` URL to psycopg3,
+  whose API differs, and a worker built against the wrong one dies at startup.
+- `select()` waits on a **self-pipe** as well, so SIGTERM interrupts the wait
+  immediately instead of stalling until the fallback timeout expires. A lost
+  connection is caught and rebuilt rather than killing the worker or spinning on
+  a dead socket.
+
+A 20-second fallback poll remains, purely to bound how long a *missed*
+notification goes unnoticed.
+
 ### Capacity and backlog
 
-**This setup serves roughly 15-30 submissions per minute, and does not degrade
-gracefully past that point.** One worker judges one submission to completion
-before claiming the next, and a single submission costs 2-4 seconds end to end:
-0.4-0.7s to create the sandbox container, ~0.45s to calibrate the per-exec
-overhead, 0.5-2s to compile the submission, 0.3-1s to compile the checker, and
-~0.15s plus runtime per test. Throughput is therefore roughly `1 / 3s`, and it
-is the worker loop, not the API or the database, that is the bottleneck.
+**One worker serves roughly 15-30 submissions per minute.** It judges one
+submission to completion before claiming the next, and a single submission costs
+2-4 seconds end to end: 0.4-0.7s to create the sandbox container, ~0.45s to
+calibrate the per-exec overhead, 0.5-2s to compile the submission, 0.3-1s to
+compile the checker, and ~0.15s plus runtime per test. The worker loop, not the
+API or the database, is the bottleneck.
 
-Two consequences worth knowing before putting this in front of anyone:
+These figures are estimates from the sandbox's own documented overhead, not
+measurements of a full run. Timing each stage — compile, checker compile,
+container start, per-test — is the first thing worth adding, because it decides
+which of the fixes below actually pays.
 
-- **The backlog is unbounded.** The API caps pending submissions at five *per
-  user*, which stops a single account from flooding the queue but says nothing
-  about total load: 100 users can still enqueue 500 submissions. If arrivals
-  exceed the service rate, wait time grows without limit rather than settling at
-  some higher plateau.
+- **The queue is bounded, but a full queue is still a deep wait.** The API
+  rejects with `429` past five pending submissions for one user and with `503`
+  past a hundred pending in total, so the backlog cannot grow without limit.
+  Within that bound the hundredth submission still waits minutes, and the caps
+  only stop new work arriving — they do nothing to drain what is already queued.
 - **Ordering is strictly FIFO by id.** Because the worker claims the oldest
-  submission first and the claim is per-user-limited, one account submitting
+  submission first and each user may hold five slots, one account submitting
   five times can force every other user to wait behind all five.
 
-Scaling fixes, in rough order of payoff, are: run one worker per core (the
-`SKIP LOCKED` claim is already safe for this); compile the checker into the
-sandbox image or cache it per problem, since it is identical for every
-submission to that problem; pool sandbox containers across submissions instead
-of creating and removing one per submission; replace the 0.5s poll loop with
-Postgres `LISTEN`/`NOTIFY`; and add a global pending cap so the API sheds load
-with a `429` rather than accepting work that will take an hour. Splitting the
-judge onto autoscaled hosts that scale on queue depth is the step beyond that.
+Already in place: multiple workers are supported as-is, the API sheds load once
+the queue is full, and `LISTEN`/`NOTIFY` replaced the 0.5s poll loop (measured
+claim latency is about 20ms).
 
-Note that the single-worker design is a throughput choice, not a correctness
-one. Timings stay stable with several workers only when they share a CPU; one
-worker pinned per core is both faster and no less accurate.
+Still to do, in rough order of payoff: cache the compiled checker per problem,
+since it is byte-identical for every submission to that problem and is currently
+recompiled every time; pool sandbox containers across submissions instead of
+creating and removing one per submission; order the queue by user rather than by
+id so one account cannot hold the line; and finally split the judge onto hosts
+that scale on queue depth. Note that the single-worker design is a throughput
+choice, not a correctness one: timings stay stable with several workers only
+while they share a CPU, so one worker pinned per core is both faster and no less
+accurate.
 
 ---
 
@@ -411,9 +453,10 @@ second problem with a different checker.
 
 ## Notes and limitations
 
-- One submission is judged at a time, by design, so that timings are stable.
-  This caps throughput at roughly 15-30 submissions per minute and the queue
-  backlog is unbounded past that; see *Capacity and backlog*.
+- One worker judges one submission at a time, so that timings are stable. This
+  caps throughput at roughly 15-30 submissions per minute *per worker*; running
+  several workers raises the cap, and the queue itself imposes no limit on how
+  many workers may run. See *Capacity and backlog*.
 - The worker reaches Docker through the host's socket, so it runs on the host
   rather than inside a container.
 - C++17 only. No interactive problems, no partial scoring, no contests.

@@ -21,7 +21,7 @@ os.environ.setdefault("ADMIN_PASSWORD", "adminpassword123")
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -54,6 +54,21 @@ TestSessionLocal = sessionmaker(
     autoflush=False,
     expire_on_commit=False,
 )
+
+
+@event.listens_for(engine, "connect")
+def _stub_pg_notify(dbapi_connection, connection_record):
+    """Stubs pg_notify, which SQLite does not have.
+
+    Submitting wakes the worker with pg_notify, and that only makes sense on
+    PostgreSQL. The notification is a doorbell, not the source of truth — the
+    submissions row is what the worker claims from — so on SQLite the correct
+    behaviour for the call is to do nothing at all. Stubbing it here keeps the
+    dialect check out of the request path in main.py.
+    """
+    dbapi_connection.create_function(
+        "pg_notify", 2, lambda channel, payload: None
+    )
 
 
 def override_get_db():

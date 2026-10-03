@@ -6,14 +6,14 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import jwt
 
 load_dotenv()
 
-from database import User, UserRole, Problem, get_db, SessionLocal, Submission, SubmissionStatus, SubmissionVerdict
+from database import User, UserRole, Problem, get_db, SessionLocal, Submission, SubmissionStatus, LISTEN_CHANNEL
 from schemas import (
     RegisterRequest, LoginRequest, ChangeHandleRequest, ChangePasswordRequest,
     UserOut, TokenResponse, ProblemListItem, ProblemDetail, SubmissionRequest,
@@ -275,9 +275,18 @@ def submit(
     source_code=req.source_code
   )
 
+  # The row and the wakeup are committed together on purpose. pg_notify is
+  # transactional — the notification is delivered at COMMIT — so putting the
+  # INSERT and the NOTIFY in one transaction makes the pair atomic. Committing
+  # the row first and notifying in a second transaction would leave a window in
+  # which a crash strands a committed submission that no worker is woken for,
+  # recoverable only by the worker's fallback poll.
   db.add(submission)
+  db.execute(
+    text("SELECT pg_notify(:channel, :payload)"),
+    {"channel": LISTEN_CHANNEL, "payload": str(submission.id)}
+  )
   db.commit()
-  db.refresh(submission)
   return serialize_submission(submission)
 
 def serialize_submission(submission: Submission) -> dict:

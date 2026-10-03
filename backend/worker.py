@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import select
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -9,22 +11,25 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from sqlalchemy import select
+
+from sqlalchemy import select as sa_select, text
 from sqlalchemy.orm import Session
+import psycopg2
+import psycopg2.extensions
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
+from paths import REPO_ROOT, from_repo, problems_dir
 from database import (
-    Problem,
-    Submission,
-    SubmissionStatus,
-    SubmissionVerdict,
-    SessionLocal
+  Submission,
+  SubmissionStatus,
+  SubmissionVerdict,
+  SessionLocal,
+  LISTEN_CHANNEL,
+  LISTEN_TIMEOUT
 )
 
-from paths import REPO_ROOT, from_repo, problems_dir
 
 JUDGE_PATH = from_repo(os.environ["JUDGE_PATH"])
 PROBLEMS_DIR = problems_dir()
@@ -39,30 +44,41 @@ if not PROBLEMS_DIR.is_dir():
     f"Problems directory not found: {PROBLEMS_DIR} "
     f"(PROBLEMS_DIR={os.environ.get('PROBLEMS_DIR')!r} resolved from {REPO_ROOT})"
   )
-ENGINE_TIMEOUT = int(os.environ.get("ENGINE_TIMEOUT", "300"))
-SLEEP_INTERVAL = 0.5
 
+ENGINE_TIMEOUT = int(os.environ.get("ENGINE_TIMEOUT", "300"))
+RECONNECT_DELAY = 2.0
+
+# Logging configuration for the root logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+# Setting sqlalchemy's logging level to WARNING to avoid spamming the output
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+# Creating a new logger for this module
 log = logging.getLogger(__name__)
+
 
 def recover_stale_submissions():
   db = SessionLocal()
   try:
     stale = db.scalars(
-      select(Submission).where(
-        Submission.status.in_(
-          [SubmissionStatus.RUNNING,
-          SubmissionStatus.COMPILING]
-        )
+      sa_select(Submission).where(
+        Submission.status.in_([
+          SubmissionStatus.RUNNING,
+          SubmissionStatus.COMPILING
+        ])
       )
     ).all()
 
     for sub in stale:
       sub.status = SubmissionStatus.PENDING
+      db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {"channel": LISTEN_CHANNEL, "payload": str(sub.id)}
+      )
       sub.current_test = None
 
     db.commit()
@@ -72,6 +88,46 @@ def recover_stale_submissions():
 
 _shutdown_requested = False
 _current_proc: subprocess.Popen | None = None
+_wakeup_r: socket.socket | None = None
+_wakeup_w: socket.socket | None = None
+
+def _wake() -> None:
+  """Unblocks the main thread's select() immediately.
+
+  A flag alone cannot do this: the main thread is parked inside select() and a
+  signal handler that only sets a boolean is not noticed until select returns on
+  its own timeout. With the fallback timeout left long, SIGTERM would stall
+  shutdown for that whole timeout, so the handler writes a byte to a self-pipe
+  that is in the select set instead.
+  """
+  if _wakeup_w is None:
+    return
+  try:
+    _wakeup_w.send(b"\x00")
+  except OSError:
+    pass
+
+
+def _drain_wakeup() -> None:
+  """Empties the self-pipe. Leaving a byte unread would make select() return
+  instantly forever."""
+  if _wakeup_r is None:
+    return
+  while True:
+    try:
+      if not _wakeup_r.recv(4096):
+        return
+    except OSError:
+      return
+
+
+def _sleep_or_shutdown(delay: float) -> None:
+  """Waits, but returns at once if a shutdown signal arrives."""
+  if _wakeup_r is None:
+    time.sleep(delay)
+    return
+  select.select([_wakeup_r], [], [], delay)
+  _drain_wakeup()
 
 
 def _handle_sigterm(signum, frame):
@@ -83,11 +139,12 @@ def _handle_sigterm(signum, frame):
       _current_proc.kill()
     except Exception:
       log.exception("Failed to kill engine subprocess on shutdown")
+  _wake()
 
 def claim_next(db: Session) -> int | None:
 
   sub = db.scalar(
-    select(Submission)
+    sa_select(Submission)
     .where(Submission.status == SubmissionStatus.PENDING)
     .order_by(Submission.id)
     .limit(1)
@@ -217,10 +274,8 @@ def judge(sub_id: int) -> None:
     db.close()
       
 
-def main() -> None:
-  log.info("Worker starting up")
-  recover_stale_submissions()
-
+def _drain_queue() -> None:
+  """Judges every pending submission until the queue is empty."""
   while not _shutdown_requested:
     db = SessionLocal()
     try:
@@ -229,12 +284,94 @@ def main() -> None:
       db.close()
 
     if sub_id is None:
-      time.sleep(SLEEP_INTERVAL)
-      continue
+      return
 
     log.info("[sub %d] claimed", sub_id)
     judge(sub_id)
     log.info("[sub %d] finished", sub_id)
+
+
+def _open_listener():
+  """Opens the dedicated LISTEN connection.
+
+  This connects with psycopg2 directly instead of through SQLAlchemy,
+  because it needs psycopg2's raw driver API: set_isolation_level to
+  enter autocommit (otherwise notifications stay invisible inside an
+  open transaction until it commits) and fileno() so that select() can
+  watch the socket. Going through an engine would return whichever
+  driver the postgresql:// URL resolves to, and SQLAlchemy 2.1 defaults
+  that scheme to psycopg, whose API differs.
+  """
+  connection = psycopg2.connect(os.environ["DATABASE_URL"])
+  connection.set_isolation_level(
+    psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
+  )
+  with connection.cursor() as cursor:
+    cursor.execute(f'LISTEN "{LISTEN_CHANNEL}"')
+  return connection
+
+
+def main() -> None:
+  global _wakeup_r, _wakeup_w
+
+  log.info("Worker starting up")
+  recover_stale_submissions()
+
+  _wakeup_r, _wakeup_w = socket.socketpair()
+  _wakeup_r.setblocking(False)
+  _wakeup_w.setblocking(False)
+
+  try:
+    while not _shutdown_requested:
+      try:
+        connection = _open_listener()
+      except (psycopg2.Error, OSError) as error:
+        log.error("could not open listener connection (%s) — retrying", error)
+        _sleep_or_shutdown(RECONNECT_DELAY)
+        continue
+
+      log.info("Listening on channel %r", LISTEN_CHANNEL)
+
+      try:
+        # Anything already queued when we connected was never notified to
+        # us, so drain before the first wait.
+        _drain_queue()
+
+        while not _shutdown_requested:
+          ready, _, _ = select.select(
+            [connection, _wakeup_r], [], [], LISTEN_TIMEOUT
+          )
+
+          if _wakeup_r in ready:
+            _drain_wakeup()
+
+          if connection in ready:
+            # The notification is only a doorbell: its payload is not
+            # trusted, because NOTIFY is not durable. The table stays
+            # the source of truth, and the id is looked up by claiming
+            # from it.
+            connection.poll()
+            connection.notifies.clear()
+            _drain_queue()
+
+      except (psycopg2.Error, OSError) as error:
+        # A dropped connection leaves the socket readable forever, so
+        # this has to be caught and the connection rebuilt. Letting
+        # poll() raise psycopg2.OperationalError escape would kill the
+        # worker, and swallowing the error without reconnecting would
+        # spin on a dead socket.
+        log.error("listener connection lost (%s) — reconnecting", error)
+        _sleep_or_shutdown(RECONNECT_DELAY)
+
+      finally:
+        try:
+          connection.close()
+        except Exception:
+          pass
+
+  finally:
+    _wakeup_r.close()
+    _wakeup_w.close()
 
   log.info("Worker stopped")
 
