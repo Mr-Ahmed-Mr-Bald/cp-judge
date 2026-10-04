@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 _SECRET_KEY = os.getenv("SECRET_KEY")
 _ALGORITHM = os.getenv("ALGORITHM", "HS256")
-_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
+_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
 if not _SECRET_KEY:
   raise RuntimeError("SECRET_KEY environment variable is not set")

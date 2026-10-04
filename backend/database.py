@@ -1,29 +1,31 @@
 import os
-from typing import Optional, Text
+import sys
+from typing import Optional
 from enum import Enum as PyEnum, auto
 from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import String, DateTime, ForeignKey, func, Enum as SaEnum, create_engine, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, relationship
 
+from paths import REPO_ROOT
+
+# `engine` is a package at the repo root, but this process only has backend/ on
+# sys.path -- as the script directory for the worker, and via pytest's
+# pythonpath for the tests. Put the repo root on the path so `engine` resolves.
+# database.py is the first module every entry point imports, so doing it here
+# covers the worker, the API and the tests in one place. The engine's own
+# scripts bootstrap the same way for themselves.
+sys.path.insert(0, str(REPO_ROOT))
+
+# E402: import after the sys.path bootstrap above, which is what makes
+# `engine` importable at all.
+from engine.protocol import Verdict  # noqa: E402
+
 load_dotenv()
 DATABASE_URL = os.getenv(key="DATABASE_URL", default="postgresql://postgres:postgres@localhost:5432/cp_judge_db")
 
-engine = create_engine(url=DATABASE_URL, echo=True)
+engine = create_engine(url=DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
-
-# The worker opens its own dedicated connection to LISTEN on, using
-# psycopg2 directly (worker._open_listener). It deliberately bypasses
-# SQLAlchemy: the raw driver APIs it needs -- set_isolation_level,
-# poll, fileno -- are psycopg2's, and going through the ORM would hand
-# back whichever driver the postgresql:// URL happens to resolve to
-# (SQLAlchemy 2.1 defaults that scheme to psycopg, which does not have
-# the same API).
-LISTEN_CHANNEL = "new_submission"
-# Fallback poll, not the normal path: a notification normally wakes the
-# worker at once. This only bounds how long a missed notification goes
-# unnoticed.
-LISTEN_TIMEOUT = 20.0
 
 class UserRole(PyEnum):
   USER = auto()
@@ -93,14 +95,7 @@ class SubmissionStatus(str, PyEnum):
   RUNNING = "RUNNING"
   DONE = "DONE"
 
-class SubmissionVerdict(str, PyEnum):
-  AC = "AC"
-  WA = "WA"
-  TL = "TL"
-  ML = "ML"
-  RE = "RE"
-  CE = "CE"
-  JE = "JE"
+SubmissionVerdict = Verdict
 
 class Submission(Base):
   __tablename__ = "submissions"

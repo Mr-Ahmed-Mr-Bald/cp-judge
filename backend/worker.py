@@ -25,10 +25,9 @@ from database import (
   Submission,
   SubmissionStatus,
   SubmissionVerdict,
-  SessionLocal,
-  LISTEN_CHANNEL,
-  LISTEN_TIMEOUT
+  SessionLocal
 )
+from settings import LISTEN_CHANNEL, LISTEN_TIMEOUT
 
 
 JUDGE_PATH = from_repo(os.environ["JUDGE_PATH"])
@@ -235,9 +234,13 @@ def judge(sub_id: int) -> None:
 
             elif etype == "done":
               sub.status = SubmissionStatus.DONE
-              sub.verdict = event.get("verdict", SubmissionVerdict.JE)
               sub.failed_test = event.get("test")
               sub.judged_at = datetime.now(timezone.utc)
+              try:
+                sub.verdict = SubmissionVerdict(event["verdict"])
+              except (KeyError, ValueError):
+                log.error("[sub %d] engine send unknown verdict %r", sub.id, event.get("verdict"))
+                sub.verdict = SubmissionVerdict.JE
               got_done = True
 
             db.commit()

@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -13,7 +12,7 @@ import jwt
 
 load_dotenv()
 
-from database import User, UserRole, Problem, get_db, SessionLocal, Submission, SubmissionStatus, LISTEN_CHANNEL
+from database import User, UserRole, Problem, get_db, SessionLocal, Submission, SubmissionStatus
 from schemas import (
     RegisterRequest, LoginRequest, ChangeHandleRequest, ChangePasswordRequest,
     UserOut, TokenResponse, ProblemListItem, ProblemDetail, SubmissionRequest,
@@ -23,6 +22,7 @@ from security import (
     hash_password, verify_password, create_access_token, decode_access_token,
 )
 from paths import problems_dir
+from settings import LISTEN_CHANNEL
 
 PROBLEMS_DIR = problems_dir()
 
@@ -225,7 +225,6 @@ def get_problem(slug: str, db: Session = Depends(get_db)):
     "statement_md": statement_path.read_text(encoding="utf-8")
   }
 
-SOURCE_MAX_BYTES = 64 * 1024
 MAX_PENDING_PER_USER = 5
 MAX_PENDING_GLOBAL = 100
 
