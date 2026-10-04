@@ -85,7 +85,7 @@ class UserOut(BaseModel):
 
   @field_validator("role", mode="before")
   @classmethod
-  def serialize_role(clas, v):
+  def serialize_role(cls, v):
     if isinstance(v, Enum):
       return v.name
     return v
