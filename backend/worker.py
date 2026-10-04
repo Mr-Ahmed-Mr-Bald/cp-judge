@@ -322,38 +322,38 @@ def main() -> None:
   _wakeup_r.setblocking(False)
   _wakeup_w.setblocking(False)
 
+  connection = None
   try:
     while not _shutdown_requested:
-      try:
-        connection = _open_listener()
-      except (psycopg2.Error, OSError) as error:
-        log.error("could not open listener connection (%s) — retrying", error)
-        _sleep_or_shutdown(RECONNECT_DELAY)
-        continue
+      if connection is None:
+        try:
+          connection = _open_listener()
+        except (psycopg2.Error, OSError) as error:
+          log.error("could not open listener connection (%s) — retrying", error)
+          _sleep_or_shutdown(RECONNECT_DELAY)
+          continue
 
-      log.info("Listening on channel %r", LISTEN_CHANNEL)
+        _drain_queue()
+        log.info("Listening on channel %r", LISTEN_CHANNEL)
 
       try:
         # Anything already queued when we connected was never notified to
         # us, so drain before the first wait.
-        _drain_queue()
+        ready, _, _ = select.select(
+          [connection, _wakeup_r], [], [], LISTEN_TIMEOUT
+        )
 
-        while not _shutdown_requested:
-          ready, _, _ = select.select(
-            [connection, _wakeup_r], [], [], LISTEN_TIMEOUT
-          )
+        if _wakeup_r in ready:
+          _drain_wakeup()
 
-          if _wakeup_r in ready:
-            _drain_wakeup()
-
-          if connection in ready:
-            # The notification is only a doorbell: its payload is not
-            # trusted, because NOTIFY is not durable. The table stays
-            # the source of truth, and the id is looked up by claiming
-            # from it.
-            connection.poll()
-            connection.notifies.clear()
-            _drain_queue()
+        if connection in ready:
+          # The notification is only a doorbell: its payload is not
+          # trusted, because NOTIFY is not durable. The table stays
+          # the source of truth, and the id is looked up by claiming
+          # from it.
+          connection.poll()
+          connection.notifies.clear()
+          _drain_queue()
 
       except (psycopg2.Error, OSError) as error:
         # A dropped connection leaves the socket readable forever, so
@@ -367,10 +367,16 @@ def main() -> None:
       finally:
         try:
           connection.close()
+          connection = None
         except Exception:
           pass
 
   finally:
+    if connection is not None:
+      try:
+        connection.close()
+      except Exception:
+        pass
     _wakeup_r.close()
     _wakeup_w.close()
 
