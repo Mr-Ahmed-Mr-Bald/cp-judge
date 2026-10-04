@@ -1,8 +1,13 @@
-import subprocess
 import time
 import uuid
+import subprocess
 from pathlib import Path
 from typing import Tuple
+
+from engine.config import (
+  SANDBOX_IMAGE, IDLE_COMMAND, CALIBRATION_RUNS,
+  MAX_COMPENSATION_SEC, PIDS_LIMIT
+)
 
 class Sandbox:
   """Runs a candidate binary inside the sandbox, one container per submission.
@@ -24,15 +29,6 @@ class Sandbox:
   every process run inside it exactly as they did to the single process of a
   per-test container. The image already runs as the unprivileged judgeuser.
   """
-
-  SANDBOX_IMAGE: str = "cp-judge-sandbox:latest"
-  # Keeps the container alive between tests so `docker exec` has somewhere to run.
-  IDLE_COMMAND: list[str] = ["sleep", "infinity"]
-  # Empty execs timed to measure this submission's harness overhead.
-  CALIBRATION_RUNS: int = 3
-  # Never hand back more than this, however slow the host is.
-  MAX_COMPENSATION_SEC: float = 0.5
-  PIDS_LIMIT: str = "16"
 
   def __init__(self, memory_limit_mb: int, binary_dir: Path):
     """
@@ -58,11 +54,11 @@ class Sandbox:
       "--network", "none",
       "--memory", f"{self.memory_limit_mb}m",
       "--memory-swap", f"{self.memory_limit_mb}m",
-      "--pids-limit", self.PIDS_LIMIT,
+      "--pids-limit", PIDS_LIMIT,
       "-v", f"{self.binary_dir}:/sandbox:ro",
       "-w", "/sandbox",
-      self.SANDBOX_IMAGE,
-      *self.IDLE_COMMAND,
+      SANDBOX_IMAGE,
+      *IDLE_COMMAND,
     ]
 
     result = subprocess.run(command, capture_output=True, text=True)
@@ -77,7 +73,7 @@ class Sandbox:
   def _measure_overhead(self) -> float:
     """Times empty execs so their cost is not charged to the first test."""
     samples = []
-    for _ in range(self.CALIBRATION_RUNS):
+    for _ in range(CALIBRATION_RUNS):
       started = time.monotonic()
       subprocess.run(
         ["docker", "exec", self.name, "/bin/true"],
@@ -91,7 +87,7 @@ class Sandbox:
 
     samples.sort()
     median = samples[len(samples) // 2]
-    return min(median, self.MAX_COMPENSATION_SEC)
+    return min(median, MAX_COMPENSATION_SEC)
 
   def stop(self) -> None:
     """Removes the container. Safe to call more than once."""

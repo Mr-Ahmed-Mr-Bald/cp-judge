@@ -5,11 +5,14 @@ import shutil
 import argparse
 
 from pathlib import Path
-from compiler import Compiler
-from runner import Sandbox
-from checker import Checker
+from typing import NoReturn
 
-def fail(msg: str):
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from engine.compiler import Compiler
+from engine.runner import Sandbox
+from engine.checker import Checker
+
+def fail(msg: str) -> NoReturn:
   """Prints error message, and terminates with exit code 1"""
   print(f"Error: {msg}", file=sys.stderr)
   sys.exit(1)

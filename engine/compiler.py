@@ -2,16 +2,16 @@ import subprocess
 from pathlib import Path
 from typing import Tuple
 
+from engine.config import COMPILE_TIMEOUT_SEC
+
 class Compiler:
   """Manages the compilation of source code files using system compilers.
 
   Attributes:
-    TIMEOUT_SEC (float): Maximum allowed time in seconds for a compilation
-    process to run before being forcefully terminated.
     INCLUDE_DIR (Path): Absolute path to the shared checker headers, anchored to
     this module so it does not depend on the caller's working directory.
   """
-  TIMEOUT_SEC: float = 10.0
+  
   INCLUDE_DIR: Path = Path(__file__).resolve().parent / "include"
 
   @staticmethod
@@ -44,7 +44,7 @@ class Compiler:
       ) as process:
         
         # Get the contents of the standard error file
-        _, stderr = process.communicate(timeout=Compiler.TIMEOUT_SEC)
+        _, stderr = process.communicate(timeout=COMPILE_TIMEOUT_SEC)
         # Success
         if process.returncode == 0:
           return ("", True)

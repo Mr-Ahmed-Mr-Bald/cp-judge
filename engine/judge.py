@@ -2,27 +2,14 @@ import sys
 import json
 import argparse
 import tempfile
-from enum import Enum
 from pathlib import Path
 from typing import Tuple
 
-from compiler import Compiler
-from runner import Sandbox
-from checker import Checker
-
-class EventType(str, Enum):
-  COMPILING= "compiling"
-  RUNNING = "running"
-  DONE = "done"
-
-class Verdict(str, Enum):
-  AC = "AC" # Accepted
-  WA = "WA" # Wrong Answer
-  TL = "TL" # Time Limit Exceeded
-  ML = "ML" # Memory Limit Exceeded
-  RE = "RE" # Runtime Error
-  CE = "CE" # Compile Error
-  JE = "JE" # Internal Engine Error
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from engine.protocol import EventType, Verdict, emit_event
+from engine.compiler import Compiler
+from engine.runner import Sandbox
+from engine.checker import Checker
 
 def validate_problem_package(problem_path: Path) -> Tuple[bool, str]:
   """Ensures the problem directory is valid before starting execution."""
@@ -37,12 +24,6 @@ def validate_problem_package(problem_path: Path) -> Tuple[bool, str]:
       return (False, f"{name} not found")
   
   return True, ""
-
-def emit_event(event_data: dict) -> None:
-  """Emits a JSON event line to stdout and flushes immediately.
-  """
-  print(json.dumps(event_data))
-  sys.stdout.flush()
 
 def main():
   # Set up the argument parser

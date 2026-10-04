@@ -2,15 +2,12 @@ import subprocess
 from pathlib import Path
 from typing import Tuple
 
+from engine.config import CHECKER_TIMEOUT_SEC
+
 class Checker:
   """Executes a testlib-compatible C++ checker binary to validate test case output.
-  
-  Attributes:
-  TIMEOUT_SEC (float): Maximum allowed time in seconds for a execution
-    process to run before being forcefully terminated.
   """
-  TIMEOUT_SEC: float = 10.0
-
+  
   @staticmethod
   def check(binary_path: Path, input_path: Path, output_path: Path, answer_path: Path) -> Tuple[str, bool]:
     """
@@ -55,7 +52,7 @@ class Checker:
       ) as process:
         
         # Get the contents of the standard error file
-        _, stderr = process.communicate(timeout=Checker.TIMEOUT_SEC)
+        _, stderr = process.communicate(timeout=CHECKER_TIMEOUT_SEC)
         feedback = stderr.strip()
 
         # Accepted
