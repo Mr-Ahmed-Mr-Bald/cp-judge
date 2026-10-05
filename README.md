@@ -1,10 +1,10 @@
 # CP Judge
 
 An online judge for competitive programming. Users read a problem, submit C++17
-from the browser, and get back one of six verdicts — Accepted, Wrong Answer,
-Time Limit Exceeded, Memory Limit Exceeded, Runtime Error, or Compile Error —
-after the program has been compiled, run against every test, and checked by a
-custom C++ checker.
+from the browser, and get back one of seven verdicts — Accepted, Wrong Answer,
+Time Limit Exceeded, Memory Limit Exceeded, Runtime Error, Compile Error, or
+Internal Judge Error — after the program has been compiled, run against every
+test, and checked by a custom C++ checker.
 
 The project has three parts that talk to each other over the filesystem and a
 database, and nothing else:
@@ -375,11 +375,11 @@ Two things worth knowing about an export:
   converter prints `! export declares N tests, M were produced` when that
   happens; treat it as a failure, not a warning.
 
-If `add_problem.py` reports that the author's solution crashed, timed out, or
-disagreed with the checker, the package is being rejected on its own merits.
-The usual cause is the sandbox's 8 MB default stack being smaller than what a
-deeply recursive solution needs, which `docker run --ulimit stack=...` would
-have to accommodate.
+If `add_problem.py` reports that the author's solution crashed or timed out,
+the package is being rejected on its own merits. If it disagrees with the
+checker, the checker is rejecting a valid answer — the usual cause is a
+checker that assumes a different output format or precision than the reference
+solution produces.
 
 ### Keeping the repository small
 

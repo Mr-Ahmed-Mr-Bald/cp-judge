@@ -109,17 +109,17 @@ The argument order follows testlib, so testlib-based checkers can be adopted lat
 | WA | The checker rejected the output on some test |
 | TLE | The time limit was exceeded on some test |
 | MLE | The memory limit was exceeded on some test |
-| RE | The program crashed, exited with a nonzero code, or exceeded the output size cap |
+| RE | The program crashed or exited with a nonzero code |
 | CE | The source failed to compile |
 
-Additionally, the system stores an internal status `JUDGE_ERROR` when the judge itself fails (checker error, sandbox failure). It is never reported as one of the six verdicts above.
+JE (Internal Judge Error) is the seventh verdict, used when the judge itself fails — checker error, sandbox failure, or a missing problem file. It is never the user's fault.
 
 ### 6.2 Procedure
 
-1. Compile the source with `g++ -O2 -std=c++17` under a compile timeout of 10 s **(default)**. On failure, the verdict is CE.
-2. For each test `i` in increasing order, run the program with the test input on standard input, under the problem's limits and an output size cap of 64 MiB **(default)**.
-   - Time limit exceeded gives TLE. Memory limit exceeded (out-of-memory kill) gives MLE. Any other abnormal termination, nonzero exit code, or exceeding the output cap gives RE.
-   - Otherwise run the checker. Exit code 0 continues to the next test, 1 gives WA, anything else gives `JUDGE_ERROR`.
+1. Compile the source with `g++ -O2 -std=c++17` under a compile timeout of 5 s **(default)**. On failure, the verdict is CE.
+2. For each test `i` in increasing order, run the program with the test input on standard input, under the problem's limits.
+   - Time limit exceeded gives TLE. Memory limit exceeded (out-of-memory kill) gives MLE. Any other abnormal termination or nonzero exit code gives RE.
+   - Otherwise run the checker. Exit code 0 continues to the next test, 1 gives WA, anything else gives JE.
 3. Judging stops at the first non-accepted test. If every test is accepted, the verdict is ACC.
 
 The result stores the verdict and, for TLE, MLE, RE, and WA, the index of the failing test. No further diagnostics (signals, access violations, compiler messages) are stored or shown.
@@ -152,11 +152,11 @@ It writes one JSON object per line to standard output:
 {"event": "done", "verdict": "WA", "test": 27}
 ```
 
-`verdict` is one of the six verdicts or `JUDGE_ERROR`. `test` is present only for failing tests. The stored problem directory contains the package files plus the answer files created during validation.
+`verdict` is one of the seven verdicts: AC, WA, TL, ML, RE, CE, or JE. `test` is present only for failing tests. The stored problem directory contains the package files plus the answer files created during validation.
 
 ## 8. Sandbox requirements
 
-Submitted code is run with these properties, using Docker (one container per compile and per run):
+Submitted code is run with these properties, using Docker (one container per submission, reused across all tests via `docker exec`):
 
 - No network access.
 - Read-only root filesystem, with no access to tests, answer files, or the checker other than the test input supplied on standard input.
