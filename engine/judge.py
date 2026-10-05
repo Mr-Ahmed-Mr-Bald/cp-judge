@@ -11,7 +11,7 @@ from engine.compiler import Compiler
 from engine.runner import Sandbox
 from engine.checker import Checker
 from engine.package_spec import (
-  TESTS_DIR, CHECKER_CPP, CONFIG_JSON, INPUT_SUFFIX, ANS_SUFFIX
+  TESTS_DIR, CHECKER_CPP, CONFIG_JSON, INPUT_SUFFIX, ANS_SUFFIX, OUTPUT_FILE
 )
 
 def validate_problem_package(problem_path: Path) -> Tuple[bool, str]:
@@ -45,20 +45,16 @@ def main():
   # Validate problem package
   ok, error_message = validate_problem_package(problem_path)
   if (not ok):
-    emit_event({
-      "event": EventType.DONE,
-      "verdict": Verdict.JE,
-      "message": error_message
-    })
+    emit_event(EventType.DONE, verdict=Verdict.JE, message=error_message)
     sys.exit(1)
 
   # Ensure source file exists
   if (not source_path.exists() or not source_path.is_file()):
-    emit_event({
-      "event": EventType.DONE,
-      "verdict": Verdict.JE,
-      "message": f"Source file not found: {source_path}"
-    })
+    emit_event(
+      EventType.DONE, 
+      verdict=Verdict.JE, 
+      message= f"Source file not found: {source_path}"
+    )
     sys.exit(1)
 
   # Get configuration
@@ -73,29 +69,19 @@ def main():
     work_dir = Path(tmp_dir)
     user_binary = work_dir / "user_binary"
     checker_binary = work_dir / "checker_binary"
-    emit_event({
-      "event": EventType.COMPILING
-    })
+    emit_event(EventType.COMPILING)
 
     # Compiling source code
     error_message, success = Compiler.compile(source_path, user_binary)
     if (not success):
-      emit_event({
-        "event": EventType.DONE,
-        "verdict": Verdict.CE,
-        "message": error_message
-      })
+      emit_event(EventType.DONE, verdict=Verdict.CE, message= error_message)
       sys.exit(0)
 
     # Compiling checker
     checker_source = problem_path / CHECKER_CPP
     error_message, success = Compiler.compile(checker_source, checker_binary)
     if (not success):
-      emit_event({
-        "event": EventType.DONE,
-        "verdict": Verdict.JE, # Judge's fault, not user's
-        "message": error_message
-      })
+      emit_event(EventType.DONE, verdict=Verdict.JE, message= error_message)
       sys.exit(1)
 
     # Validate test files
@@ -103,12 +89,12 @@ def main():
     test_files = sorted(list(tests_dir.glob(f"*.{INPUT_SUFFIX}")))
     for test_idx, test_file in enumerate(test_files):
       if (not test_file.with_suffix(f".{ANS_SUFFIX}").exists()):
-        emit_event({
-          "event": EventType.DONE,
-          "verdict": Verdict.JE, # Judge's fault
-          "test": test_idx,
-          "message": "Answer file does not exist"
-        })
+        emit_event(
+          EventType.DONE,
+          verdict=Verdict.JE, # Judge's fault
+          test=test_idx,
+          message= "Answer file does not exist"
+        )
         sys.exit(1)
 
     # One sandbox for the whole submission: the container is created once and
@@ -118,16 +104,12 @@ def main():
       sandbox = Sandbox(problem_config["memory_limit"], user_binary.parent)
       sandbox.start()
     except (RuntimeError, OSError) as error:
-      emit_event({
-        "event": EventType.DONE,
-        "verdict": Verdict.JE,
-        "message": str(error)
-      })
+      emit_event(EventType.DONE, verdict=Verdict.JE, message= str(error))
       sys.exit(1)
 
     with sandbox:
       for test_idx, test_file in enumerate(test_files):
-        emit_event({"event": EventType.RUNNING, "test": test_idx})
+        emit_event(EventType.RUNNING, test=test_idx)
 
         pstdout, exit_code, timed_out = sandbox.run(
           user_binary.name, test_file, problem_config["time_limit"]
@@ -135,46 +117,29 @@ def main():
 
         # Timeout
         if (timed_out):
-          emit_event({
-            "event": EventType.DONE, 
-            "verdict": Verdict.TL,
-            "test": test_idx
-          })
+          emit_event(EventType.DONE, verdict=Verdict.TL,test=test_idx)
           sys.exit(0)
 
         # Memory limit
         if (exit_code == 137):
-          emit_event({
-            "event": EventType.DONE,
-            "verdict": Verdict.ML,
-            "test": test_idx
-          })
+          emit_event(EventType.DONE, verdict=Verdict.ML, test=test_idx)
           sys.exit(0)
 
         # Runtime error
         if (exit_code != 0):
-          emit_event({
-            "event": EventType.DONE, 
-            "verdict": Verdict.RE,
-            "test": test_idx
-          })
+          emit_event(EventType.DONE, verdict=Verdict.RE, test=test_idx)
           sys.exit(0)
 
         # Save program stdout to temporary file for checker
-        out_file = work_dir / "out.out"
+        out_file = work_dir / OUTPUT_FILE
         out_file.write_text(pstdout, encoding="utf-8")
 
         feedback, is_correct = Checker.check(checker_binary, test_file, out_file, test_file.with_suffix(f".{ANS_SUFFIX}"))
         if (not is_correct):
-          emit_event({
-            "event": EventType.DONE, 
-            "verdict": Verdict.WA,
-            "test": test_idx,
-            "message": feedback
-          })
+          emit_event(EventType.DONE, verdict=Verdict.WA, test=test_idx, message=feedback)
           sys.exit(0)
 
-    emit_event({"event": EventType.DONE, "verdict": Verdict.AC})
+    emit_event(EventType.DONE, verdict=Verdict.AC)
 
 if __name__ == "__main__":
   main()

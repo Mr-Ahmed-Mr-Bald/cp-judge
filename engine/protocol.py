@@ -1,5 +1,6 @@
 import json
 from enum import Enum
+from typing_extensions import Unpack, TypedDict
 
 class EventType(str, Enum):
   COMPILING= "compiling"
@@ -15,7 +16,13 @@ class Verdict(str, Enum):
   CE = "CE" # Compile Error
   JE = "JE" # Internal Engine Error
 
-def emit_event(event_data: dict) -> None:
+class EventFields(TypedDict, total=False):
+  verdict: Verdict
+  test: int
+  message: str
+
+def emit_event(event: EventType, **fields: Unpack[EventFields]) -> None:
   """Emits a JSON event line to stdout and flushes immediately.
   """
-  print(json.dumps(event_data), flush=True)
+  data = {"event": event, **fields}
+  print(json.dumps(data), flush=True)

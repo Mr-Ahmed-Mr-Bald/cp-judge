@@ -1,6 +1,7 @@
 STATEMENT_MD = "statement.md"
 CONFIG_JSON = "config.json"
 CHECKER_CPP = "checker.cpp"
+OUTPUT_FILE = "out.out"
 MAIN_CPP = "main.cpp"
 TESTS_DIR = "tests"
 ANS_SUFFIX = "ans"
