@@ -10,15 +10,18 @@ from engine.protocol import EventType, Verdict, emit_event
 from engine.compiler import Compiler
 from engine.runner import Sandbox
 from engine.checker import Checker
+from engine.package_spec import (
+  TESTS_DIR, CHECKER_CPP, CONFIG_JSON, INPUT_SUFFIX, ANS_SUFFIX
+)
 
 def validate_problem_package(problem_path: Path) -> Tuple[bool, str]:
   """Ensures the problem directory is valid before starting execution."""
   
   for path, name in [
     (problem_path, "Problem folder"),
-    (problem_path / "tests", "Tests folder"),
-    (problem_path / "checker.cpp", "checker.cpp"),
-    (problem_path / "config.json", "config.json"),
+    (problem_path / TESTS_DIR, "Tests folder"),
+    (problem_path / CHECKER_CPP, CHECKER_CPP),
+    (problem_path / CONFIG_JSON, CONFIG_JSON),
   ]:
     if not path.exists():
       return (False, f"{name} not found")
@@ -59,7 +62,7 @@ def main():
     sys.exit(1)
 
   # Get configuration
-  config_path = problem_path / "config.json"
+  config_path = problem_path / CONFIG_JSON
   with open(config_path, "r", encoding="utf-8") as f:
     problem_config = json.load(f)
 
@@ -85,7 +88,7 @@ def main():
       sys.exit(0)
 
     # Compiling checker
-    checker_source = problem_path / "checker.cpp"
+    checker_source = problem_path / CHECKER_CPP
     error_message, success = Compiler.compile(checker_source, checker_binary)
     if (not success):
       emit_event({
@@ -96,10 +99,10 @@ def main():
       sys.exit(1)
 
     # Validate test files
-    tests_dir = problem_path / "tests"
-    test_files = sorted(list(tests_dir.glob("*.in")))
+    tests_dir = problem_path / TESTS_DIR
+    test_files = sorted(list(tests_dir.glob(f"*.{INPUT_SUFFIX}")))
     for test_idx, test_file in enumerate(test_files):
-      if (not test_file.with_suffix(".ans").exists()):
+      if (not test_file.with_suffix(f".{ANS_SUFFIX}").exists()):
         emit_event({
           "event": EventType.DONE,
           "verdict": Verdict.JE, # Judge's fault
@@ -161,7 +164,7 @@ def main():
         out_file = work_dir / "out.out"
         out_file.write_text(pstdout, encoding="utf-8")
 
-        feedback, is_correct = Checker.check(checker_binary, test_file, out_file, test_file.with_suffix(".ans"))
+        feedback, is_correct = Checker.check(checker_binary, test_file, out_file, test_file.with_suffix(f".{ANS_SUFFIX}"))
         if (not is_correct):
           emit_event({
             "event": EventType.DONE, 

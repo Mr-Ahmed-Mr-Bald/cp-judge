@@ -36,10 +36,13 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from utils import fail
+from package_spec import (
+    CONFIG_JSON, CHECKER_CPP, MAIN_CPP, STATEMENT_MD, TESTS_DIR
+)
 
 ENGINE_DIR = Path(__file__).resolve().parent
 
@@ -81,12 +84,6 @@ INLINE_COMMANDS = {
     "mbox": "",
     "mathrm": "",
 }
-
-
-def fail(message: str) -> None:
-    print(f"Error: {message}", file=sys.stderr)
-    raise SystemExit(1)
-
 
 # ── LaTeX → Markdown ─────────────────────────────────────────────────────────
 
@@ -437,10 +434,10 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
     destination = out_root / slug
     if destination.exists():
         fail(f"'{destination}' already exists; remove it or pass a different --out.")
-    (destination / "tests").mkdir(parents=True)
+    (destination / TESTS_DIR).mkdir(parents=True)
 
     statement = build_statement(package, properties, metadata)
-    (destination / "statement.md").write_text(statement, encoding="utf-8")
+    (destination / STATEMENT_MD).write_text(statement, encoding="utf-8")
 
     config = {
         "title": metadata["title"],
@@ -448,7 +445,7 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
         "memory_limit": metadata["memory_limit_mb"],
         "tags": metadata["tags"],
     }
-    (destination / "config.json").write_text(
+    (destination / CONFIG_JSON).write_text(
         json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
@@ -480,7 +477,7 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
 
     candidates.sort(key=lambda item: (not item[0], item[1]))
     chosen_solution = candidates[0][2]
-    shutil.copyfile(chosen_solution, destination / "main.cpp")
+    shutil.copyfile(chosen_solution, destination / MAIN_CPP)
 
     checker = (
         find_asset(package, root, "./assets/checker/source")
@@ -490,7 +487,7 @@ def convert(package: Path, slug: str, out_root: Path, max_tests: int | None) -> 
         checker = package / "check.cpp"
     if not checker.is_file():
         fail("no checker source in the export.")
-    (destination / "checker.cpp").write_text(
+    (destination / CHECKER_CPP).write_text(
         inline_local_includes(checker.read_text(encoding="utf-8"), package),
         encoding="utf-8",
     )

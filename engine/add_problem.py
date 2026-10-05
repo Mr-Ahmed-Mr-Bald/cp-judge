@@ -5,21 +5,21 @@ import shutil
 import argparse
 
 from pathlib import Path
-from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from engine.compiler import Compiler
 from engine.runner import Sandbox
 from engine.checker import Checker
+from engine.utils import fail
+from engine.package_spec import (
+  STATEMENT_MD, CONFIG_JSON, CHECKER_CPP,
+  MAIN_CPP, TESTS_DIR, ANS_SUFFIX, INPUT_SUFFIX
+)
 
-def fail(msg: str) -> NoReturn:
-  """Prints error message, and terminates with exit code 1"""
-  print(f"Error: {msg}", file=sys.stderr)
-  sys.exit(1)
-
+SLUG_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 def validate_slug(slug: str):
   """Validates problem slug"""
-  if (not re.match(r"^[A-Za-z0-9_-]+$", slug)):
+  if (not SLUG_RE.match(slug)):
     fail(f"Invalid package slug '{slug}': Slugs must contain only letters, numbers, hyphens, and underscores.")
 
 def validate_config(file_path: Path) -> dict:
@@ -36,19 +36,19 @@ def validate_config(file_path: Path) -> dict:
 
   allowed_keys: set = {"title", "time_limit", "memory_limit", "tags"}
   if (set(data.keys()) != allowed_keys):
-    fail("config.json must contain exactly 'title', 'time_limit', 'memory_limit', and 'tags'.")
+    fail(f"{CONFIG_JSON} must contain exactly 'title', 'time_limit', 'memory_limit', and 'tags'.")
   
   if not isinstance(data["title"], str) or not data["title"].strip():
-    fail("config.json: 'title' must be a non-empty string.")
+    fail(f"{CONFIG_JSON}: 'title' must be a non-empty string.")
 
   if not isinstance(data["time_limit"], int) or not (100 <= data["time_limit"] <= 10000):
-    fail("config.json: 'time_limit' must be an integer between 100 and 10000.")
+    fail(f"{CONFIG_JSON}: 'time_limit' must be an integer between 100 and 10000.")
 
   if not isinstance(data["memory_limit"], int) or not (32 <= data["memory_limit"] <= 1024):
-    fail("config.json: 'memory_limit' must be an integer between 32 and 1024.")
+    fail(f"{CONFIG_JSON}: 'memory_limit' must be an integer between 32 and 1024.")
 
   if not isinstance(data["tags"], list) or not all(isinstance(t, str) for t in data["tags"]):
-    fail("config.json: 'tags' must be a list of strings.")
+    fail(f"{CONFIG_JSON}: 'tags' must be a list of strings.")
 
   return data
 
@@ -58,14 +58,14 @@ def validate_tests(tests: Path) -> list[Path]:
   Returns a list of file paths to the individual test files
   """
   if not tests.is_dir():
-    fail(f"'tests' directory not found.")
+    fail(f"'{TESTS_DIR}' directory not found.")
   
-  test_files = sorted(tests.glob("*.in"))
+  test_files = sorted(tests.glob(f"*.{INPUT_SUFFIX}"))
   if not (0 <= len(test_files) <= 100):
     fail(f"Number of tests must be between 0 and 100. Found {len(test_files)}")
 
   for idx, path in enumerate(test_files):
-    if (path.name != f"{idx:02d}.in"):
+    if (path.name != f"{idx:02d}.{INPUT_SUFFIX}"):
       fail("Invalid test file naming sequence.")
 
   return test_files
@@ -88,11 +88,11 @@ def main():
   if problem.exists():
     fail(f"Problem with the same slug already exists.")
 
-  statement_file = pkg / "statement.md"
-  config_file = pkg / "config.json"
-  main_file = pkg / "main.cpp"
-  checker_file = pkg / "checker.cpp"
-  tests = pkg / "tests"
+  statement_file = pkg / STATEMENT_MD
+  config_file = pkg / CONFIG_JSON
+  main_file = pkg / MAIN_CPP
+  checker_file = pkg / CHECKER_CPP
+  tests = pkg / TESTS_DIR
 
   # Make sure files exist
   for file in [statement_file, config_file, main_file, checker_file]:
@@ -131,7 +131,7 @@ def main():
 
   with sandbox:
     for test_file in problem_tests:
-      answer_file = test_file.with_suffix(".ans")
+      answer_file = test_file.with_suffix(f".{ANS_SUFFIX}")
       stdout, exit_code, timed_out = sandbox.run(
         main_binary.name,
         test_file,

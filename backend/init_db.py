@@ -10,8 +10,6 @@ from database import (
   Base,
   Problem,
   Tag,
-  User,
-  UserRole,
   SessionLocal,
   engine
 )

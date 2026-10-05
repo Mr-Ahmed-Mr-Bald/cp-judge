@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -21,8 +22,14 @@ from schemas import (
 from security import (
     hash_password, verify_password, create_access_token, decode_access_token,
 )
-from paths import problems_dir
+from paths import problems_dir, REPO_ROOT
 from settings import LISTEN_CHANNEL
+
+sys.path.insert(0, str(REPO_ROOT))
+
+# E402: import after the sys.path bootstrap above, which is what makes
+# `engine` importable at all.
+from engine.package_spec import STATEMENT_MD  # noqa: E402
 
 PROBLEMS_DIR = problems_dir()
 
@@ -206,7 +213,7 @@ def get_problem(slug: str, db: Session = Depends(get_db)):
       detail=f"Problem '{slug}' not found"
     )
   
-  statement_path = PROBLEMS_DIR / slug / "statement.md"
+  statement_path = PROBLEMS_DIR / slug / STATEMENT_MD
   if not statement_path.exists():
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
